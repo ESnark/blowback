@@ -1,0 +1,64 @@
+name: Release
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  release:
+    name: Release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repo
+        uses: actions/checkout@v3
+        with:
+          # 전체 히스토리가 필요합니다 - 태그 생성 및 Changeset 작업을 위해
+          fetch-depth: 0
+          # write 권한으로 체크아웃해야 태그 푸시가 가능합니다
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '20'
+          registry-url: 'https://registry.npmjs.org/'
+
+      - name: Setup PNPM
+        uses: pnpm/action-setup@v2
+        with:
+          version: 10
+          run_install: false
+
+      - name: Install Dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Setup Git User
+        run: |
+          git config --global user.name 'github-actions[bot]'
+          git config --global user.email 'github-actions[bot]@users.noreply.github.com'
+
+      - name: Create Release Pull Request or Publish to npm
+        id: changesets
+        uses: changesets/action@v1
+        with:
+          # publish 옵션을 true로 설정하면 Changeset이 자동으로 버전 업데이트 및 배포 수행
+          publish: pnpm release
+          # 버전 업데이트 후 커밋 푸시
+          commit: 'chore: version packages'
+          # GitHub Actions 토큰으로 주요 브랜치에 직접 커밋 허용
+          createGithubReleases: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      # Changeset이 버전을 업데이트한 경우에만 태그 생성
+      - name: Create and Push Git Tag
+        if: steps.changesets.outputs.published == 'true'
+        run: |
+          # package.json에서 현재 버전 가져오기
+          VERSION=$(node -p "require('./package.json').version")
+          # 태그 생성
+          git tag v$VERSION
+          # 태그 푸시
+          git push origin v$VERSION 

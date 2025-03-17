@@ -261,7 +261,3 @@ The checkpoint system is particularly useful in the following situations:
 - **Collaboration**: Sharing specific states with other developers for problem-solving
 
 The checkpoint system provides an additional layer of visual state tracking beyond HMR events, enabling developers to understand the impact of code changes more comprehensively.
-
-## License
-
-MIT

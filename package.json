@@ -8,12 +8,12 @@
     "build": "tsc",
     "start": "node dist/index.js",
     "dev": "tsc -w",
-    "prepare": "npm run build",
+    "prepare": "pnpm build",
     "lint": "eslint src/**/*.ts",
     "test": "jest",
     "changeset": "changeset",
     "version": "changeset version",
-    "release": "npm run build && changeset publish"
+    "release": "pnpm build && changeset publish"
   },
   "keywords": [
     "mcp",
