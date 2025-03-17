@@ -1,11 +1,10 @@
 # Vite MCP Server
 
-A Model Context Protocol (MCP) server that integrates Cursor with Vite HMR, allowing Cursor agents to modify code and observe live updates through the Vite Hot Module Replacement system.
+A Model Context Protocol (MCP) server that integrates Cursor with Vite Dev server, allowing Cursor agents to modify code and observe live updates through the Vite Hot Module Replacement system.
 
 ## Features
 
 - 🔄 Connect to a running Vite dev server's HMR system
-- 📝 Update files and let Vite HMR process the changes
 - 🔍 Monitor HMR events and update status
 - 🌐 Automated browser integration for visual feedback and debugging
 - 🤖 Enable Cursor AI agents to modify code and see the results in real-time
@@ -120,7 +119,7 @@ This MCP server provides the following tools:
 
 ## Requirements
 
-- Node.js 18 or higher
+- Node.js 20 or higher
 - A running Vite dev server
 - Cursor with MCP support
 - Chrome browser (for browser automation features)

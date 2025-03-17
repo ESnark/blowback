@@ -1,11 +1,10 @@
 # Vite MCP 서버
 
-Vite HMR과 Cursor를 통합하는 Model Context Protocol(MCP) 서버로, Cursor AI 에이전트가 코드를 수정하고 Vite의 Hot Module Replacement 시스템을 통해 실시간 업데이트를 관찰할 수 있게 합니다.
+Vite 개발 서버와 Cursor를 통합하는 Model Context Protocol(MCP) 서버로, Cursor AI 에이전트가 코드를 수정하고 Vite의 Hot Module Replacement 시스템을 통해 실시간 업데이트를 관찰할 수 있게 합니다.
 
 ## 주요 기능
 
 - 🔄 실행 중인 Vite 개발 서버의 HMR 시스템에 연결
-- 📝 파일을 업데이트하고 Vite HMR이 변경 사항을 처리하도록 함
 - 🔍 HMR 이벤트 및 업데이트 상태 모니터링
 - 🌐 자동화된 브라우저를 통한 시각적 피드백 및 디버깅
 - 🤖 Cursor AI 에이전트가 코드를 수정하고 실시간으로 결과 확인 가능
@@ -120,7 +119,7 @@ Cursor는 다음과 같은 작업을 수행합니다:
 
 ## 요구 사항
 
-- Node.js 18 이상
+- Node.js 20 이상
 - 실행 중인 Vite 개발 서버
 - MCP 지원이 있는 Cursor
 - Chrome 브라우저 (브라우저 자동화 기능 사용 시)
