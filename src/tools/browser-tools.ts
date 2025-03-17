@@ -6,6 +6,9 @@ import path from "path";
 import { HMREvent } from "../types/hmr.js";
 import { Logger } from "../utils/logger.js";
 import { randomUUID } from "crypto";
+import { LogManager, CheckpointLogManager } from "./log-manager.js";
+import { createReadStream } from "fs";
+import readline from "readline";
 
 // Return type definition
 type BrowserStatus = {
@@ -19,22 +22,6 @@ type BrowserStatus = {
   };
 };
 
-// Console message type definition
-type ConsoleMessage = {
-  type: string;
-  text: string;
-  timestamp: number;
-};
-
-/**
- * Register browser automation related MCP tools to the server
- * @param server MCP server instance
- * @param browserRef Browser instance reference
- * @param pageRef Page instance reference
- * @param lastHMREvents HMR event history array
- * @param projectRootRef Project root path reference
- * @param viteDevServerUrlRef Vite development server URL reference
- */
 export function registerBrowserTools(
   server: McpServer,
   browserRef: { current: puppeteer.Browser | null },
@@ -43,10 +30,44 @@ export function registerBrowserTools(
   projectRootRef: { current: string },
   viteDevServerUrlRef: { current: string }
 ) {
-  // Array to store console messages
-  const consoleMessages: ConsoleMessage[] = [];
-  const MAX_CONSOLE_MESSAGES = 500; // Maximum number of messages to store
+  const LOG_FILE_PATH = path.join(projectRootRef.current, 'dist', 'logs', 'browser-console.log');
+  const logManager = new LogManager(LOG_FILE_PATH);
   
+  // 로그를 파일에 기록하는 함수
+  async function appendLogToFile(type: string, text: string) {
+    try {
+      // meta 태그에서 현재 checkpoint ID 읽기
+      const checkpointId = await pageRef.current?.evaluate(() => {
+        const metaTag = document.querySelector('meta[name="__vite_hmr_cursor"]');
+        return metaTag ? metaTag.getAttribute('data-hash') : null;
+      }) || null;
+
+      const url = await pageRef.current?.evaluate(() => window.location.href) || 'unknown';
+      const logEntry = JSON.stringify({
+        type,
+        text,
+        timestamp: new Date().toISOString(),
+        url,
+        checkpointId
+      }) + '\n';
+
+      // 기본 로그 파일에 기록
+      await logManager.appendLog(logEntry);
+
+      // checkpoint 로그 파일에도 기록 (checkpoint가 있는 경우)
+      if (checkpointId) {
+        const checkpointLogManager = CheckpointLogManager.getInstance();
+        await checkpointLogManager.appendLog(
+          checkpointId,
+          logEntry,
+          path.dirname(LOG_FILE_PATH)
+        );
+      }
+    } catch (error) {
+      Logger.error(`Failed to write console log to file: ${error}`);
+    }
+  }
+
   // Utility function: Check browser status
   const ensureBrowserStarted = (): BrowserStatus => {
     if (!browserRef.current || !pageRef.current) {
@@ -66,24 +87,13 @@ export function registerBrowserTools(
     return { isStarted: true, page: pageRef.current };
   };
 
-  // Utility function: Verify checkpoint hash
-  const verifyCheckpointHash = async (page: puppeteer.Page, checkpointHash?: string) => {
-    if (!checkpointHash) {
-      return { currentHash: null, verified: false, wasChecked: false };
-    }
-
-    const hashVerification = await page.evaluate((expectedHash) => {
+  // Utility function: Get current checkpoint ID
+  const getCurrentCheckpointId = async (page: puppeteer.Page) => {
+    const checkpointId = await page.evaluate(() => {
       const metaTag = document.querySelector('meta[name="__vite_hmr_cursor"]');
-      const currentHash = metaTag ? metaTag.getAttribute('data-hash') : null;
-      return {
-        currentHash,
-        verified: currentHash === expectedHash
-      };
-    }, checkpointHash);
-    
-    Logger.info(`Checkpoint verification: ${hashVerification.verified ? 'Matched' : 'Failed'}, Expected: ${checkpointHash}, Current: ${hashVerification.currentHash}`);
-    
-    return { ...hashVerification, wasChecked: true };
+      return metaTag ? metaTag.getAttribute('data-hash') : null;
+    });
+    return checkpointId;
   };
 
   // Browser start tool
@@ -101,9 +111,6 @@ export function registerBrowserTools(
           Logger.info("Closed existing browser instance");
         }
         
-        // Initialize console messages
-        consoleMessages.length = 0;
-        
         Logger.info(`Starting browser and navigating to ${viteServerUrl}`);
         browserRef.current = await puppeteer.launch({ 
           headless,
@@ -113,39 +120,17 @@ export function registerBrowserTools(
         pageRef.current = await browserRef.current.newPage();
         await pageRef.current.setViewport({ width: 1280, height: 800 });
         
-        // Set up console log and error monitoring
-        pageRef.current.on('console', msg => {
+        // 콘솔 메시지 핸들러
+        pageRef.current.on('console', async msg => {
           const messageText = msg.text();
           const messageType = msg.type();
-          
-          // Store console message
-          consoleMessages.push({
-            type: messageType,
-            text: messageText,
-            timestamp: Date.now()
-          });
-          
-          // Maintain maximum count
-          if (consoleMessages.length > MAX_CONSOLE_MESSAGES) {
-            consoleMessages.shift();
-          }
-          
+          await appendLogToFile(messageType, messageText);
           Logger.debug(`Browser console ${messageType}: ${messageText}`);
         });
         
-        pageRef.current.on('pageerror', err => {
-          // Store error message
-          consoleMessages.push({
-            type: 'error',
-            text: err.message,
-            timestamp: Date.now()
-          });
-          
-          // Maintain maximum count
-          if (consoleMessages.length > MAX_CONSOLE_MESSAGES) {
-            consoleMessages.shift();
-          }
-          
+        // 페이지 에러 핸들러
+        pageRef.current.on('pageerror', async err => {
+          await appendLogToFile('error', err.message);
           Logger.error(`Browser page error: ${err}`);
           lastHMREvents.unshift({
             type: 'browser-error',
@@ -156,6 +141,14 @@ export function registerBrowserTools(
           });
           if (lastHMREvents.length > 10) {
             lastHMREvents.pop();
+          }
+        });
+
+        // 페이지 이동 이벤트 리스너 설정
+        pageRef.current.on('framenavigated', async frame => {
+          if (frame === pageRef.current?.mainFrame()) {
+            const url = frame.url();
+            await appendLogToFile('navigation', `frame navigated: ${url}`);
           }
         });
         
@@ -187,292 +180,15 @@ export function registerBrowserTools(
     }
   );
 
-  // Browser console log retrieval tool
-  server.tool(
-    "get-browser-console-logs",
-    "Retrieves console logs from the browser session, with optional filtering by type and content",
-    {
-      types: z.array(z.enum(['log', 'debug', 'info', 'error', 'warning'])).optional()
-        .describe("Filter logs by these message types (e.g., ['error', 'warning'])"),
-      limit: z.number().optional().describe("Maximum number of log messages to return (default: 50)"),
-      searchText: z.string().optional().describe("Only return messages containing this text"),
-      since: z.number().optional().describe("Only return messages since this timestamp (milliseconds since epoch)")
-    },
-    async ({ types, limit = 50, searchText, since }) => {
-      try {
-        // Check browser status
-        const browserStatus = ensureBrowserStarted();
-        if (!browserStatus.isStarted) {
-          return browserStatus.error;
-        }
-        
-        // Get filtered messages
-        let filteredMessages = [...consoleMessages];
-        
-        // Filter by type
-        if (types && types.length > 0) {
-          filteredMessages = filteredMessages.filter(msg => 
-            types.includes(msg.type as any)
-          );
-        }
-        
-        // Filter by text
-        if (searchText) {
-          filteredMessages = filteredMessages.filter(msg => 
-            msg.text.toLowerCase().includes(searchText.toLowerCase())
-          );
-        }
-        
-        // Filter by timestamp
-        if (since) {
-          filteredMessages = filteredMessages.filter(msg => 
-            msg.timestamp >= since
-          );
-        }
-        
-        // Sort by most recent messages
-        filteredMessages.sort((a, b) => b.timestamp - a.timestamp);
-        
-        // Limit maximum number
-        filteredMessages = filteredMessages.slice(0, limit);
-        
-        const result = {
-          totalMessagesStored: consoleMessages.length,
-          filteredCount: filteredMessages.length,
-          messages: filteredMessages.map(msg => ({
-            type: msg.type,
-            text: msg.text,
-            time: new Date(msg.timestamp).toISOString()
-          }))
-        };
-        
-        return {
-          content: [
-            {
-              type: "text",
-              text: JSON.stringify(result, null, 2)
-            }
-          ]
-        };
-      } catch (error) {
-        const errorMessage = error instanceof Error ? error.message : String(error);
-        Logger.error(`Failed to get browser console logs: ${errorMessage}`);
-        return {
-          content: [
-            {
-              type: "text",
-              text: `Failed to get browser console logs: ${errorMessage}`
-            }
-          ],
-          isError: true
-        };
-      }
-    }
-  );
-
-  // Specialized tool for filtering only console errors (for convenience)
-  server.tool(
-    "get-browser-console-errors",
-    "Retrieves only error logs from the browser session for easier debugging",
-    {
-      limit: z.number().optional().describe("Maximum number of error messages to return (default: 20)"),
-      searchText: z.string().optional().describe("Only return error messages containing this text"),
-      since: z.number().optional().describe("Only return errors since this timestamp (milliseconds since epoch)")
-    },
-    async ({ limit = 20, searchText, since }) => {
-      try {
-        // Check browser status
-        const browserStatus = ensureBrowserStarted();
-        if (!browserStatus.isStarted) {
-          return browserStatus.error;
-        }
-        
-        // Filter only error messages
-        let filteredMessages = consoleMessages.filter(msg => 
-          msg.type === 'error' || msg.type === 'warning'
-        );
-        
-        // Filter by text
-        if (searchText) {
-          filteredMessages = filteredMessages.filter(msg => 
-            msg.text.toLowerCase().includes(searchText.toLowerCase())
-          );
-        }
-        
-        // Filter by timestamp
-        if (since) {
-          filteredMessages = filteredMessages.filter(msg => 
-            msg.timestamp >= since
-          );
-        }
-        
-        // Sort by most recent messages
-        filteredMessages.sort((a, b) => b.timestamp - a.timestamp);
-        
-        // Limit maximum number
-        filteredMessages = filteredMessages.slice(0, limit);
-        
-        const result = {
-          totalErrorsStored: consoleMessages.filter(msg => msg.type === 'error' || msg.type === 'warning').length,
-          filteredCount: filteredMessages.length,
-          errors: filteredMessages.map(msg => ({
-            type: msg.type,
-            text: msg.text,
-            time: new Date(msg.timestamp).toISOString()
-          }))
-        };
-        
-        return {
-          content: [
-            {
-              type: "text",
-              text: JSON.stringify(result, null, 2)
-            }
-          ]
-        };
-      } catch (error) {
-        const errorMessage = error instanceof Error ? error.message : String(error);
-        Logger.error(`Failed to get browser console errors: ${errorMessage}`);
-        return {
-          content: [
-            {
-              type: "text",
-              text: `Failed to get browser console errors: ${errorMessage}`
-            }
-          ],
-          isError: true
-        };
-      }
-    }
-  );
-
-  // Tool for starting/stopping console log monitoring
-  server.tool(
-    "monitor-browser-console",
-    "Starts or stops monitoring browser console logs with regular updates through server logs",
-    {
-      action: z.enum(['start', 'stop']).describe("Start or stop monitoring console logs"),
-      intervalMs: z.number().optional().describe("Interval in milliseconds to check for new logs (default: 1000)"),
-      types: z.array(z.enum(['log', 'debug', 'info', 'error', 'warning'])).optional()
-        .describe("Filter logs by these message types (default: all types)"),
-      limit: z.number().optional().describe("Maximum number of log messages per update (default: 5)")
-    },
-    async ({ action, intervalMs = 1000, types, limit = 5 }) => {
-      try {
-        // Check browser status
-        const browserStatus = ensureBrowserStarted();
-        if (!browserStatus.isStarted) {
-          return browserStatus.error;
-        }
-        
-        if (action === 'start') {
-          // Track last checked timestamp
-          let lastCheckedTimestamp = Date.now();
-          
-          // Monitoring interval ID
-          const monitoringIntervalId = setInterval(() => {
-            // Filter new log messages
-            let newMessages = consoleMessages.filter(msg => msg.timestamp > lastCheckedTimestamp);
-            
-            // Filter by type (if specified)
-            if (types && types.length > 0) {
-              newMessages = newMessages.filter(msg => 
-                types.includes(msg.type as any)
-              );
-            }
-            
-            // Log new messages if any
-            if (newMessages.length > 0) {
-              // Sort new messages
-              newMessages.sort((a, b) => b.timestamp - a.timestamp);
-              
-              // Limit maximum number
-              const limitedMessages = newMessages.slice(0, limit);
-              
-              // Log new messages
-              for (const msg of limitedMessages) {
-                Logger.info(
-                  `[Console Monitor] ${new Date(msg.timestamp).toISOString()} [${msg.type}]: ${msg.text}`
-                );
-              }
-              
-              // Mention additional messages if any
-              if (newMessages.length > limit) {
-                Logger.info(`[Console Monitor] ${newMessages.length - limit} more messages not shown`);
-              }
-            }
-            
-            // Update current timestamp
-            lastCheckedTimestamp = Date.now();
-          }, intervalMs);
-          
-          // Store interval ID (for stopping)
-          if (global.hasOwnProperty('consoleMonitorIntervalId') && 
-              (global as any).consoleMonitorIntervalId) {
-            clearInterval((global as any).consoleMonitorIntervalId);
-          }
-          (global as any).consoleMonitorIntervalId = monitoringIntervalId;
-          
-          return {
-            content: [
-              {
-                type: "text",
-                text: `Started monitoring browser console logs. Logs will be available in server logs every ${intervalMs}ms.`
-              }
-            ]
-          };
-        } else {
-          // Stop monitoring
-          if (global.hasOwnProperty('consoleMonitorIntervalId') && 
-              (global as any).consoleMonitorIntervalId) {
-            clearInterval((global as any).consoleMonitorIntervalId);
-            (global as any).consoleMonitorIntervalId = null;
-            
-            return {
-              content: [
-                {
-                  type: "text",
-                  text: "Stopped monitoring browser console logs."
-                }
-              ]
-            };
-          } else {
-            return {
-              content: [
-                {
-                  type: "text",
-                  text: "No active console monitoring found."
-                }
-              ]
-            };
-          }
-        }
-      } catch (error) {
-        const errorMessage = error instanceof Error ? error.message : String(error);
-        Logger.error(`Failed to manage console monitoring: ${errorMessage}`);
-        return {
-          content: [
-            {
-              type: "text",
-              text: `Failed to manage console monitoring: ${errorMessage}`
-            }
-          ],
-          isError: true
-        };
-      }
-    }
-  );
-  
   // Screenshot capture tool
   server.tool(
     "capture-screenshot",
     "Captures a screenshot of the current page or a specific element",
     {
       selector: z.string().optional().describe("CSS selector to capture (captures full page if not provided)"),
-      saveToFile: z.boolean().optional().describe("Whether to save as a file (default: false)"),
-      checkpointHash: z.string().optional().describe("Hash value to verify against the current cursor tracker")
+      saveToFile: z.boolean().optional().describe("Whether to save as a file (default: false)")
     },
-    async ({ selector, saveToFile = false, checkpointHash }) => {
+    async ({ selector, saveToFile = false }) => {
       try {
         // Check browser status
         const browserStatus = ensureBrowserStarted();
@@ -480,8 +196,8 @@ export function registerBrowserTools(
           return browserStatus.error;
         }
         
-        // Verify checkpoint hash
-        const hashVerification = await verifyCheckpointHash(browserStatus.page, checkpointHash);
+        // Get current checkpoint ID
+        const checkpointId = await getCurrentCheckpointId(browserStatus.page);
         
         let screenshot: string | Buffer;
         let screenshotFilepath: string | undefined;
@@ -511,15 +227,11 @@ export function registerBrowserTools(
         
         // Save to file if needed
         if (saveToFile) {
-          // Generate YYYY-MM-DD date format
-          const today = new Date();
-          const dateStr = today.toISOString().split('T')[0]; // YYYY-MM-DD format
-          
-          // Use hash for filename (provided checkpoint hash or random generation)
-          const hashForFilename = checkpointHash || randomUUID().substring(0, 8);
+          // Use checkpoint ID or random ID for filename
+          const hashForFilename = checkpointId || randomUUID().substring(0, 8);
           
           // Generate filename: YYYY-MM-DD.{checkpoint_hash}.png
-          const filename = `${dateStr}.${hashForFilename}.png`;
+          const filename = `${new Date().toISOString().split('T')[0]}.${hashForFilename}.png`;
           
           // Create screenshots directory in project root
           const screenshotsDir = path.join(projectRootRef.current, 'screenshots');
@@ -548,11 +260,7 @@ export function registerBrowserTools(
             ? `Screenshot saved to ${screenshotFilepath}` 
             : `Screenshot captured ${selector ? `of element "${selector}"` : 'of full page'}`,
           filename: screenshotFilepath ? path.basename(screenshotFilepath) : undefined,
-          checkpoint: hashVerification.wasChecked ? {
-            expected: checkpointHash,
-            current: hashVerification.currentHash,
-            verified: hashVerification.verified
-          } : undefined
+          checkpointId
         };
         
         return {
@@ -592,10 +300,9 @@ export function registerBrowserTools(
     "Retrieves properties and state information of a specific element",
     {
       selector: z.string().describe("CSS selector of the element to inspect"),
-      properties: z.array(z.string()).describe("Array of property names to retrieve (e.g., ['value', 'checked', 'textContent'])"),
-      checkpointHash: z.string().optional().describe("Hash value to verify against the current cursor tracker")
+      properties: z.array(z.string()).describe("Array of property names to retrieve (e.g., ['value', 'checked', 'textContent'])")
     },
-    async ({ selector, properties, checkpointHash }) => {
+    async ({ selector, properties }) => {
       try {
         // Check browser status
         const browserStatus = ensureBrowserStarted();
@@ -603,8 +310,8 @@ export function registerBrowserTools(
           return browserStatus.error;
         }
         
-        // Verify checkpoint hash
-        const hashVerification = await verifyCheckpointHash(browserStatus.page, checkpointHash);
+        // Get current checkpoint ID
+        const checkpointId = await getCurrentCheckpointId(browserStatus.page);
         
         // Check if element exists
         await browserStatus.page.waitForSelector(selector, { visible: true, timeout: 5000 });
@@ -637,11 +344,7 @@ export function registerBrowserTools(
         const resultMessage = {
           selector,
           properties: elementProperties,
-          checkpoint: hashVerification.wasChecked ? {
-            expected: checkpointHash,
-            current: hashVerification.currentHash,
-            verified: hashVerification.verified
-          } : undefined
+          checkpointId
         };
         
         return {
@@ -674,10 +377,9 @@ export function registerBrowserTools(
     "Retrieves style information of a specific element",
     {
       selector: z.string().describe("CSS selector of the element to inspect"),
-      styleProperties: z.array(z.string()).describe("Array of style property names to retrieve (e.g., ['color', 'fontSize', 'backgroundColor'])"),
-      checkpointHash: z.string().optional().describe("Hash value to verify against the current cursor tracker")
+      styleProperties: z.array(z.string()).describe("Array of style property names to retrieve (e.g., ['color', 'fontSize', 'backgroundColor'])")
     },
-    async ({ selector, styleProperties, checkpointHash }) => {
+    async ({ selector, styleProperties }) => {
       try {
         // Check browser status
         const browserStatus = ensureBrowserStarted();
@@ -685,8 +387,8 @@ export function registerBrowserTools(
           return browserStatus.error;
         }
         
-        // Verify checkpoint hash
-        const hashVerification = await verifyCheckpointHash(browserStatus.page, checkpointHash);
+        // Get current checkpoint ID
+        const checkpointId = await getCurrentCheckpointId(browserStatus.page);
         
         // Retrieve element styles
         const styles = await browserStatus.page.evaluate((selector, stylePropsToGet) => {
@@ -719,11 +421,7 @@ export function registerBrowserTools(
         const resultMessage = {
           selector,
           styles,
-          checkpoint: hashVerification.wasChecked ? {
-            expected: checkpointHash,
-            current: hashVerification.currentHash,
-            verified: hashVerification.verified
-          } : undefined
+          checkpointId
         };
         
         return {
@@ -755,10 +453,9 @@ export function registerBrowserTools(
     "get-element-dimensions",
     "Retrieves dimension and position information of a specific element",
     {
-      selector: z.string().describe("CSS selector of the element to inspect"),
-      checkpointHash: z.string().optional().describe("Hash value to verify against the current cursor tracker")
+      selector: z.string().describe("CSS selector of the element to inspect")
     },
-    async ({ selector, checkpointHash }) => {
+    async ({ selector }) => {
       try {
         // Check browser status
         const browserStatus = ensureBrowserStarted();
@@ -766,8 +463,8 @@ export function registerBrowserTools(
           return browserStatus.error;
         }
         
-        // Verify checkpoint hash
-        const hashVerification = await verifyCheckpointHash(browserStatus.page, checkpointHash);
+        // Get current checkpoint ID
+        const checkpointId = await getCurrentCheckpointId(browserStatus.page);
         
         // Retrieve element dimensions and position information
         const dimensions = await browserStatus.page.evaluate((selector) => {
@@ -809,11 +506,7 @@ export function registerBrowserTools(
         const resultMessage = {
           selector,
           dimensions,
-          checkpoint: hashVerification.wasChecked ? {
-            expected: checkpointHash,
-            current: hashVerification.currentHash,
-            verified: hashVerification.verified
-          } : undefined
+          checkpointId
         };
         
         return {
@@ -909,354 +602,22 @@ export function registerBrowserTools(
       }
     }
   );
-  
-  // Cursor tracker update tool
-  server.tool(
-    "update-cursor-tracker",
-    "Creates or updates a meta tag in the browser to track cursor-suggested changes with a hash identifier",
-    {
-      hash: z.string().optional().describe("Custom hash value to set (generates random UUID if not provided)")
-    },
-    async ({ hash }) => {
-      try {
-        // Check browser status
-        const browserStatus = ensureBrowserStarted();
-        if (!browserStatus.isStarted) {
-          return browserStatus.error;
-        }
-        
-        // Use provided hash or generate new hash
-        const trackerHash = hash || randomUUID();
-        
-        // Update or add meta tag in browser
-        await browserStatus.page.evaluate((hash) => {
-          let metaTag = document.querySelector('meta[name="__vite_hmr_cursor"]');
-          
-          if (!metaTag) {
-            metaTag = document.createElement('meta');
-            metaTag.setAttribute('name', '__vite_hmr_cursor');
-            document.head.appendChild(metaTag);
-          }
-          
-          metaTag.setAttribute('data-hash', hash);
-          console.log(`Updated cursor tracker with hash: ${hash}`);
-          return true;
-        }, trackerHash);
-        
-        return {
-          content: [
-            {
-              type: "text",
-              text: `Successfully updated cursor tracker with hash: ${trackerHash}`
-            }
-          ]
-        };
-      } catch (error) {
-        const errorMessage = error instanceof Error ? error.message : String(error);
-        Logger.error(`Failed to update cursor tracker: ${errorMessage}`);
-        return {
-          content: [
-            {
-              type: "text",
-              text: `Failed to update cursor tracker: ${errorMessage}`
-            }
-          ],
-          isError: true
-        };
-      }
-    }
-  );
-  
-  // Checkpoint storage for browser state tracking
-  const checkpoints = new Map<string, {
-    hash: string;
-    timestamp: number;
-    pageUrl: string;
-    domSnapshot?: string;
-    description?: string;
-  }>();
-  
-  // Set checkpoint tool - Creates a named checkpoint of the current browser state
-  server.tool(
-    "set-checkpoint",
-    "Creates a named checkpoint of the current browser state for later verification",
-    {
-      name: z.string().optional().describe("Name for the checkpoint (generates a random name if not provided)"),
-      description: z.string().optional().describe("Optional description of what this checkpoint represents"),
-      captureDOM: z.boolean().optional().describe("Whether to capture DOM snapshot for more detailed comparison (default: false)")
-    },
-    async ({ name, description, captureDOM = false }) => {
-      try {
-        // Check browser status
-        const browserStatus = ensureBrowserStarted();
-        if (!browserStatus.isStarted) {
-          return browserStatus.error;
-        }
-        
-        // Generate a checkpoint ID
-        const checkpointId = name || `checkpoint-${randomUUID().substring(0, 8)}`;
-        
-        // Get current page URL
-        const pageUrl = browserStatus.page.url();
-        
-        // Generate a unique hash for this checkpoint
-        const hash = randomUUID();
-        
-        // Update browser meta tag with this hash
-        await browserStatus.page.evaluate((hash) => {
-          let metaTag = document.querySelector('meta[name="__vite_hmr_cursor"]');
-          
-          if (!metaTag) {
-            metaTag = document.createElement('meta');
-            metaTag.setAttribute('name', '__vite_hmr_cursor');
-            document.head.appendChild(metaTag);
-          }
-          
-          metaTag.setAttribute('data-hash', hash);
-          metaTag.setAttribute('data-checkpoint-time', Date.now().toString());
-          console.log(`Set checkpoint with hash: ${hash}`);
-          return true;
-        }, hash);
-        
-        // Optionally capture DOM snapshot for detailed comparison
-        let domSnapshot = undefined;
-        if (captureDOM) {
-          domSnapshot = await browserStatus.page.evaluate(() => {
-            return document.documentElement.outerHTML;
-          });
-        }
-        
-        // Store checkpoint information
-        checkpoints.set(checkpointId, {
-          hash,
-          timestamp: Date.now(),
-          pageUrl,
-          domSnapshot,
-          description
-        });
-        
-        // Maintain maximum checkpoints (keep last 20)
-        if (checkpoints.size > 20) {
-          const oldestKey = [...checkpoints.keys()][0];
-          checkpoints.delete(oldestKey);
-        }
-        
-        return {
-          content: [
-            {
-              type: "text",
-              text: JSON.stringify({
-                message: `Successfully set checkpoint: ${checkpointId}`,
-                checkpoint: {
-                  id: checkpointId,
-                  timestamp: new Date().toISOString(),
-                  hash,
-                  url: pageUrl,
-                  description: description || "No description provided",
-                  hasDOMSnapshot: !!domSnapshot
-                }
-              }, null, 2)
-            }
-          ]
-        };
-      } catch (error) {
-        const errorMessage = error instanceof Error ? error.message : String(error);
-        Logger.error(`Failed to set checkpoint: ${errorMessage}`);
-        return {
-          content: [
-            {
-              type: "text",
-              text: `Failed to set checkpoint: ${errorMessage}`
-            }
-          ],
-          isError: true
-        };
-      }
-    }
-  );
-  
-  // Verify checkpoint tool - Compares current state with a previously created checkpoint
-  server.tool(
-    "verify-checkpoint",
-    "Verifies if the current browser state matches a previously created checkpoint",
-    {
-      checkpointId: z.string().describe("ID of the checkpoint to verify against"),
-      verifyDOM: z.boolean().optional().describe("Whether to verify DOM snapshot if available (default: false)"),
-      selector: z.string().optional().describe("CSS selector to verify only a specific part of the page")
-    },
-    async ({ checkpointId, verifyDOM = false, selector }) => {
-      try {
-        // Check browser status
-        const browserStatus = ensureBrowserStarted();
-        if (!browserStatus.isStarted) {
-          return browserStatus.error;
-        }
-        
-        // Check if checkpoint exists
-        if (!checkpoints.has(checkpointId)) {
-          return {
-            content: [
-              {
-                type: "text",
-                text: `Checkpoint with ID "${checkpointId}" not found. Please create a checkpoint first using set-checkpoint.`
-              }
-            ],
-            isError: true
-          };
-        }
-        
-        // Get checkpoint data
-        const checkpoint = checkpoints.get(checkpointId)!;
-        
-        // Verify current page URL
-        const currentUrl = browserStatus.page.url();
-        const urlMatches = currentUrl === checkpoint.pageUrl;
-        
-        // Verify hash in meta tag
-        const hashVerification = await browserStatus.page.evaluate((expectedHash) => {
-          const metaTag = document.querySelector('meta[name="__vite_hmr_cursor"]');
-          const currentHash = metaTag ? metaTag.getAttribute('data-hash') : null;
-          return {
-            currentHash,
-            verified: currentHash === expectedHash
-          };
-        }, checkpoint.hash);
-        
-        // Verify DOM if requested and available
-        let domVerification: any = { verified: false, available: false };
-        if (verifyDOM && checkpoint.domSnapshot) {
-          if (selector) {
-            // Compare only a specific part of the DOM
-            domVerification = await browserStatus.page.evaluate((checkpointHtml, targetSelector) => {
-              try {
-                // Create temporary document to parse checkpoint HTML
-                const parser = new DOMParser();
-                const checkpointDoc = parser.parseFromString(checkpointHtml, 'text/html');
-                
-                // Get the elements to compare
-                const currentElement = document.querySelector(targetSelector);
-                const checkpointElement = checkpointDoc.querySelector(targetSelector);
-                
-                if (!currentElement || !checkpointElement) {
-                  return {
-                    verified: false,
-                    available: true,
-                    error: !currentElement 
-                      ? `Current element with selector '${targetSelector}' not found` 
-                      : `Checkpoint element with selector '${targetSelector}' not found`
-                  };
-                }
-                
-                // Compare the HTML content
-                const currentHtml = currentElement.outerHTML;
-                const checkpointElementHtml = checkpointElement.outerHTML;
-                
-                return {
-                  verified: currentHtml === checkpointElementHtml,
-                  available: true,
-                  contentMatches: currentHtml === checkpointElementHtml,
-                  differences: currentHtml !== checkpointElementHtml ? {
-                    currentLength: currentHtml.length,
-                    checkpointLength: checkpointElementHtml.length
-                  } : null
-                };
-              } catch (err) {
-                return {
-                  verified: false,
-                  available: true,
-                  error: `Error comparing DOM: ${err}`
-                };
-              }
-            }, checkpoint.domSnapshot, selector);
-          } else {
-            // Compare the whole DOM
-            domVerification = await browserStatus.page.evaluate((checkpointHtml) => {
-              try {
-                const currentHtml = document.documentElement.outerHTML;
-                return {
-                  verified: currentHtml === checkpointHtml,
-                  available: true,
-                  contentMatches: currentHtml === checkpointHtml,
-                  differences: currentHtml !== checkpointHtml ? {
-                    currentLength: currentHtml.length,
-                    checkpointLength: checkpointHtml.length
-                  } : null
-                };
-              } catch (err) {
-                return {
-                  verified: false,
-                  available: true,
-                  error: `Error comparing DOM: ${err}`
-                };
-              }
-            }, checkpoint.domSnapshot);
-          }
-        }
-        
-        // Prepare verification result
-        const verificationResult = {
-          checkpointId,
-          timestamp: new Date().toISOString(),
-          original: {
-            createdAt: new Date(checkpoint.timestamp).toISOString(),
-            description: checkpoint.description || "No description provided"
-          },
-          verification: {
-            urlMatches,
-            hashMatches: hashVerification.verified,
-            currentUrl,
-            expectedUrl: checkpoint.pageUrl,
-            currentHash: hashVerification.currentHash,
-            expectedHash: checkpoint.hash,
-            domVerification: domVerification.available ? domVerification : { available: false }
-          },
-          passed: urlMatches && hashVerification.verified && 
-                 (!domVerification.available || domVerification.verified)
-        };
-        
-        return {
-          content: [
-            {
-              type: "text",
-              text: JSON.stringify(verificationResult, null, 2)
-            }
-          ]
-        };
-      } catch (error) {
-        const errorMessage = error instanceof Error ? error.message : String(error);
-        Logger.error(`Failed to verify checkpoint: ${errorMessage}`);
-        return {
-          content: [
-            {
-              type: "text",
-              text: `Failed to verify checkpoint: ${errorMessage}`
-            }
-          ],
-          isError: true
-        };
-      }
-    }
-  );
-  
+
   // Element HTML content retrieval tool
   server.tool(
     "get-element-html",
     "Retrieves the HTML content of a specific element and its children",
     {
       selector: z.string().describe("CSS selector of the element to inspect"),
-      includeOuter: z.boolean().optional().describe("If true, includes the selected element's outer HTML; otherwise returns only inner HTML (default: false)"),
-      checkpointHash: z.string().optional().describe("Hash value to verify against the current cursor tracker")
+      includeOuter: z.boolean().optional().describe("If true, includes the selected element's outer HTML; otherwise returns only inner HTML (default: false)")
     },
-    async ({ selector, includeOuter = false, checkpointHash }) => {
+    async ({ selector, includeOuter = false }) => {
       try {
         // Check browser status
         const browserStatus = ensureBrowserStarted();
         if (!browserStatus.isStarted) {
           return browserStatus.error;
         }
-        
-        // Verify checkpoint hash
-        const hashVerification = await verifyCheckpointHash(browserStatus.page, checkpointHash);
         
         // Check if element exists
         await browserStatus.page.waitForSelector(selector, { visible: true, timeout: 5000 });
@@ -1286,11 +647,7 @@ export function registerBrowserTools(
           selector,
           htmlType: includeOuter ? "outerHTML" : "innerHTML",
           length: htmlContent.length,
-          checkpoint: hashVerification.wasChecked ? {
-            expected: checkpointHash,
-            current: hashVerification.currentHash,
-            verified: hashVerification.verified
-          } : undefined
+          checkpointId: await getCurrentCheckpointId(browserStatus.page)
         };
         
         return {
@@ -1313,6 +670,53 @@ export function registerBrowserTools(
             {
               type: "text",
               text: `Failed to get element HTML: ${errorMessage}`
+            }
+          ],
+          isError: true
+        };
+      }
+    }
+  );
+
+  // Console logs retrieval tool
+  server.tool(
+    "get-console-logs",
+    "Retrieves console logs from the development server",
+    {
+      checkpoint: z.string().optional().describe("If specified, returns only logs recorded at this checkpoint"),
+      limit: z.number().optional().describe("Number of logs to return, starting from the most recent log")
+    },
+    async ({ checkpoint, limit }) => {
+      try {
+        const logPath = checkpoint
+          ? path.join(path.dirname(LOG_FILE_PATH), `browser-console.${checkpoint}.log`)
+          : LOG_FILE_PATH;
+
+        Logger.info(`Reading logs from: ${logPath}`);
+
+        // 체크포인트별 로그 매니저 생성
+        const logManager = new LogManager(logPath);
+        
+        // 로그 읽기
+        const { logs } = await logManager.readLogs(limit);
+        
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify({
+                logs,
+              }, null, 2)
+            }
+          ]
+        };
+      } catch (error) {
+        Logger.error(`Failed to read console logs: ${error}`);
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Failed to read console logs: ${error}`
             }
           ],
           isError: true
@@ -1497,10 +901,9 @@ Examples are available in the schema definition.`,
           })
         ])
       ).describe("Array of commands to execute in sequence"),
-      timeout: z.number().optional().describe("Overall timeout in milliseconds (default: 30000)"),
-      checkpointHash: z.string().optional().describe("Hash value to verify against the current cursor tracker")
+      timeout: z.number().optional().describe("Overall timeout in milliseconds (default: 30000)")
     },
-    async ({ commands, timeout = 30000, checkpointHash }) => {
+    async ({ commands, timeout = 30000 }) => {
       try {
         // Check browser status
         const browserStatus = ensureBrowserStarted();
@@ -1508,8 +911,8 @@ Examples are available in the schema definition.`,
           return browserStatus.error;
         }
         
-        // Verify checkpoint hash
-        const hashVerification = await verifyCheckpointHash(browserStatus.page, checkpointHash);
+        // Get current checkpoint ID
+        const checkpointId = await getCurrentCheckpointId(browserStatus.page);
         
         // Define command handler type
         type CommandArgs = Record<string, any>;
@@ -1872,11 +1275,7 @@ Examples are available in the schema definition.`,
           failureCount: results.filter(r => r.status === "error").length,
           elapsedTime: Date.now() - startTime,
           results,
-          checkpoint: hashVerification.wasChecked ? {
-            expected: checkpointHash,
-            current: hashVerification.currentHash,
-            verified: hashVerification.verified
-          } : undefined
+          checkpointId
         };
         
         return {

@@ -7,6 +7,7 @@ import { ViteHMRClient } from "./clients/vite-hmr-client.js";
 import { registerHMRTools } from "./tools/hmr-tools.js";
 import { registerBrowserTools } from "./tools/browser-tools.js";
 import { Logger } from "./utils/logger.js";
+import { registerConsoleResource } from "./resources/console.js";
 
 /**
  * Main entry point for MCP Vite HMR server
@@ -35,7 +36,7 @@ async function main() {
       }
     });
 
-    // Register tools
+    // Register tools and resources
     registerHMRTools(server, lastHMREvents, viteClientRef, projectRootRef);
     registerBrowserTools(
       server,
@@ -45,6 +46,7 @@ async function main() {
       projectRootRef,
       viteDevServerUrlRef
     );
+    registerConsoleResource(server, projectRootRef.current);
 
     // Set up stdio transport and connect
     const transport = new StdioServerTransport();
