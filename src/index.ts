@@ -1,13 +1,13 @@
 #!/usr/bin/env node
-import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
-import puppeteer from "puppeteer";
-import { HMREvent } from "./types/hmr.js";
-import { ViteHMRClient } from "./clients/vite-hmr-client.js";
-import { registerHMRTools } from "./tools/hmr-tools.js";
-import { registerBrowserTools } from "./tools/browser-tools.js";
-import { Logger } from "./utils/logger.js";
-import { registerConsoleResource } from "./resources/console.js";
+import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
+import puppeteer from 'puppeteer';
+import { HMREvent } from './types/hmr.js';
+import { ViteHMRClient } from './clients/vite-hmr-client.js';
+import { registerHMRTools } from './tools/hmr-tools.js';
+import { registerBrowserTools } from './tools/browser-tools.js';
+import { Logger } from './utils/logger.js';
+import { registerConsoleResource } from './resources/console.js';
 
 /**
  * Main entry point for MCP Vite HMR server
@@ -21,15 +21,15 @@ async function main() {
     const browserRef = { current: null as puppeteer.Browser | null };
     const pageRef = { current: null as puppeteer.Page | null };
     const projectRootRef = { current: process.cwd() };
-    const viteDevServerUrlRef = { current: "http://localhost:5173" };
+    const viteDevServerUrlRef = { current: 'http://localhost:5173' };
 
     // Array to store recent HMR events
     const lastHMREvents: HMREvent[] = [];
 
     // Create MCP server instance
     const server = new McpServer({
-      name: "vite-hmr-server",
-      version: "1.0.0",
+      name: 'vite-hmr-server',
+      version: '1.0.0',
       description: `Connects to Vite development server to track changes in your project and provide real-time feedback on the results.
 
 Supports checkpoint-based state management for comparing browser states, logs, and screenshots at specific points in time.
@@ -55,7 +55,7 @@ Use checkpoints by inserting '<meta name="__mcp_checkpoint" data-id="">' into th
     // Set up stdio transport and connect
     const transport = new StdioServerTransport();
     await server.connect(transport);
-    Logger.info("MCP Vite HMR Server running on stdio transport");
+    Logger.info('MCP Vite HMR Server running on stdio transport');
 
     // Clean up resources on exit
     process.on('exit', () => {
@@ -64,18 +64,18 @@ Use checkpoints by inserting '<meta name="__mcp_checkpoint" data-id="">' into th
       }
       if (browserRef.current) {
         browserRef.current.close().catch(error => {
-          Logger.error("Error closing browser:", error);
+          Logger.error('Error closing browser:', error);
         });
       }
     });
   } catch (error) {
-    Logger.error("Fatal error in main():", error);
+    Logger.error('Fatal error in main():', error);
     process.exit(1);
   }
 }
 
 // Execute main function
 main().catch(error => {
-  Logger.error("Unhandled promise rejection in main():", error);
+  Logger.error('Unhandled promise rejection in main():', error);
   process.exit(1);
 });

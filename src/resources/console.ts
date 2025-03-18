@@ -1,10 +1,9 @@
-import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { z } from "zod";
-import fs from "fs/promises";
-import path from "path";
-import readline from "readline";
-import { createReadStream } from "fs";
-import { Logger } from "../utils/logger.js";
+import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { createReadStream } from 'fs';
+import fs from 'fs/promises';
+import path from 'path';
+import readline from 'readline';
+import { Logger } from '../utils/logger.js';
 
 // Match console message types with those managed by browser tools
 type ConsoleMessage = {
@@ -20,16 +19,16 @@ export const consoleMessages: ConsoleMessage[] = [];
 
 export function registerConsoleResource(server: McpServer, projectRoot: string) {
   const LOG_DIR = path.join(projectRoot, 'dist', 'logs');
-  
+
   Logger.info(`Registering console-logs resource with LOG_DIR: ${LOG_DIR}`);
 
-  server.resource("console-logs", "console-logs://", {
-    description: "Get console logs from the development server, starting from the most recent logs",
-    mimeType: "application/json",
+  server.resource('console-logs', 'console-logs://', {
+    description: 'Get console logs from the development server, starting from the most recent logs',
+    mimeType: 'application/json',
   }, async (uri: URL) => {
     try {
-      const checkpoint = uri.searchParams.get("checkpoint");
-      const limit = uri.searchParams.get("limit") ? parseInt(uri.searchParams.get("limit")!) : undefined;
+      const checkpoint = uri.searchParams.get('checkpoint');
+      const limit = uri.searchParams.get('limit') ? parseInt(uri.searchParams.get('limit')!) : undefined;
 
       // Determine log file path
       const logPath = checkpoint
@@ -71,7 +70,7 @@ export function registerConsoleResource(server: McpServer, projectRoot: string) 
         contents: limitedLogs.map(log => ({
           uri: uri.toString(),
           text: JSON.stringify(log),
-          mimeType: "application/json"
+          mimeType: 'application/json'
         }))
       };
     } catch (error) {

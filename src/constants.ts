@@ -1,8 +1,8 @@
-import fs from "fs";
-import path from "path";
-import os from "os";
-import crypto from "crypto";
-import { Logger } from "./utils/logger.js";
+import fs from 'fs';
+import path from 'path';
+import os from 'os';
+import crypto from 'crypto';
+import { Logger } from './utils/logger.js';
 
 // Create random log directory path in temporary directory
 const getLogDirectoryPath = (): { rootDir: string, logsDir: string, screenshotsDir: string } => {

@@ -1,8 +1,8 @@
-import fs from "fs";
-import path from "path";
-import readline from "readline";
-import { Logger } from "../utils/logger.js";
-import { LOG_DIRECTORY } from "../constants.js";
+import fs from 'fs';
+import path from 'path';
+import readline from 'readline';
+import { Logger } from '../utils/logger.js';
+import { LOG_DIRECTORY } from '../constants.js';
 
 /**
  * Manages log files with rotation implementation
@@ -148,7 +148,7 @@ export class LogManager {
         }
 
         this.writeStream?.write(logEntry, (err: Error | null | undefined) => {
-          if (err) { reject(err) } else {
+          if (err) { reject(err); } else {
             this.currentLogCount++;
 
             if (this.currentLogCount >= this.MAX_LOGS_PER_FILE) {
@@ -175,7 +175,7 @@ export class LogManager {
           }
 
           streamData.writeStream?.write(logEntry, (err: Error | null | undefined) => {
-            if (err) { reject(err) } else {
+            if (err) { reject(err); } else {
               streamData.currentLogCount++;
 
               if (streamData.currentLogCount >= this.MAX_LOGS_PER_FILE) {

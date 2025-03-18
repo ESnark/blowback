@@ -1,0 +1,19 @@
+# Build output
+dist/
+
+# Dependencies
+node_modules/
+
+# Test files
+**/*.test.ts
+**/*.spec.ts
+
+# Configuration files
+*.config.js
+*.config.ts
+
+# Generated files
+*.d.ts
+
+# Coverage directory
+coverage/

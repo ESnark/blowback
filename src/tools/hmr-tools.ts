@@ -1,8 +1,8 @@
-import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { z } from "zod";
-import { ViteHMRClient } from "../clients/vite-hmr-client.js";
-import { HMRError, HMREvent, HMRUpdate } from "../types/hmr.js";
-import { Logger } from "../utils/logger.js";
+import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { z } from 'zod';
+import { ViteHMRClient } from '../clients/vite-hmr-client.js';
+import { HMRError, HMREvent, HMRUpdate } from '../types/hmr.js';
+import { Logger } from '../utils/logger.js';
 
 // Maximum number of HMR events to store
 const MAX_HMR_EVENTS = 10;
@@ -22,11 +22,11 @@ export function registerHMRTools(
 ) {
   // Vite HMR connection initialization tool
   server.tool(
-    "init-vite-connection",
+    'init-vite-connection',
     "Connects to the project's development server",
     {
-      viteHmrUrl: z.string().describe("WebSocket URL for Vite HMR (e.g., ws://localhost:5173/__hmr)"),
-      projectRoot: z.string().optional().describe("Root path of the project")
+      viteHmrUrl: z.string().describe('WebSocket URL for Vite HMR (e.g., ws://localhost:5173/__hmr)'),
+      projectRoot: z.string().optional().describe('Root path of the project')
     },
     async ({ viteHmrUrl, projectRoot }) => {
       try {
@@ -56,7 +56,7 @@ export function registerHMRTools(
         return {
           content: [
             {
-              type: "text",
+              type: 'text',
               text: `Successfully connected to Vite HMR server at ${viteHmrUrl}\nProject root: ${projectRootRef.current}`
             }
           ]
@@ -67,7 +67,7 @@ export function registerHMRTools(
         return {
           content: [
             {
-              type: "text",
+              type: 'text',
               text: `Failed to connect to Vite HMR server: ${errorMessage}`
             }
           ],
@@ -79,10 +79,10 @@ export function registerHMRTools(
 
   // Recent HMR events retrieval tool
   server.tool(
-    "get-hmr-events",
-    "Retrieves recent HMR events",
+    'get-hmr-events',
+    'Retrieves recent HMR events',
     {
-      limit: z.number().optional().describe("Maximum number of events to return")
+      limit: z.number().optional().describe('Maximum number of events to return')
     },
     async ({ limit }) => {
       try {
@@ -90,8 +90,8 @@ export function registerHMRTools(
           return {
             content: [
               {
-                type: "text",
-                text: "Vite HMR client not initialized. Please call init-vite-connection first."
+                type: 'text',
+                text: 'Vite HMR client not initialized. Please call init-vite-connection first.'
               }
             ],
             isError: true
@@ -103,7 +103,7 @@ export function registerHMRTools(
         return {
           content: [
             {
-              type: "text",
+              type: 'text',
               text: `Recent HMR events:\n${JSON.stringify(eventsToReturn, null, 2)}`
             }
           ]
@@ -114,7 +114,7 @@ export function registerHMRTools(
         return {
           content: [
             {
-              type: "text",
+              type: 'text',
               text: `Failed to get HMR events: ${errorMessage}`
             }
           ],
@@ -126,17 +126,17 @@ export function registerHMRTools(
 
   // HMR status check tool
   server.tool(
-    "check-hmr-status",
-    "Checks the status of HMR",
-    { timeout: z.number().optional().describe("Timeout in milliseconds to wait for HMR events") },
+    'check-hmr-status',
+    'Checks the status of HMR',
+    { timeout: z.number().optional().describe('Timeout in milliseconds to wait for HMR events') },
     async ({ timeout = 5000 }) => {
       try {
         if (!viteClientRef.current) {
           return {
             content: [
               {
-                type: "text",
-                text: "Vite HMR client not initialized. Please call init-vite-connection first."
+                type: 'text',
+                text: 'Vite HMR client not initialized. Please call init-vite-connection first.'
               }
             ],
             isError: true
@@ -152,7 +152,7 @@ export function registerHMRTools(
           return {
             content: [
               {
-                type: "text",
+                type: 'text',
                 text: `HMR errors detected:\n${JSON.stringify(errors, null, 2)}`
               }
             ],
@@ -168,10 +168,10 @@ export function registerHMRTools(
         return {
           content: [
             {
-              type: "text",
+              type: 'text',
               text: updates.length > 0
                 ? `HMR updates processed successfully:\n${JSON.stringify(updates, null, 2)}`
-                : `No recent HMR updates detected.`
+                : 'No recent HMR updates detected.'
             }
           ]
         };
@@ -181,7 +181,7 @@ export function registerHMRTools(
         return {
           content: [
             {
-              type: "text",
+              type: 'text',
               text: `Failed to check HMR status: ${errorMessage}`
             }
           ],
