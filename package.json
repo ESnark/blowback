@@ -14,7 +14,7 @@
     "changeset": "changeset",
     "version": "changeset version",
     "release": "pnpm build && changeset publish",
-    "inspect": "pnpm build && npx @modelcontextprotocol/inspector node dist/index.js"
+    "inspect": "pnpm build && CLIENT_PORT=6100 npx @modelcontextprotocol/inspector node dist/index.js"
   },
   "keywords": [
     "mcp",

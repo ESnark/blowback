@@ -6,7 +6,7 @@ import readline from "readline";
 import { createReadStream } from "fs";
 import { Logger } from "../utils/logger.js";
 
-// 브라우저 도구에서 관리하는 콘솔 메시지 타입과 동일하게 맞춤
+// Match console message types with those managed by browser tools
 type ConsoleMessage = {
   type: string;
   text: string;
@@ -15,7 +15,7 @@ type ConsoleMessage = {
   checkpointId: string | null;
 };
 
-// 외부에서 접근할 수 있도록 콘솔 메시지 저장소 export
+// Export console message store for external access
 export const consoleMessages: ConsoleMessage[] = [];
 
 export function registerConsoleResource(server: McpServer, projectRoot: string) {
@@ -26,26 +26,22 @@ export function registerConsoleResource(server: McpServer, projectRoot: string) 
   server.resource("console-logs", "console-logs://", {
     description: "Get console logs from the development server, starting from the most recent logs",
     mimeType: "application/json",
-    // properties: {
-    //   checkpoint: z.string().optional().describe("If specified, returns only logs recorded at this checkpoint"),
-    //   limit: z.number().optional().describe("Number of logs to return, ordered from most recent to oldest"),
-    // },
   }, async (uri: URL) => {
     try {
       const checkpoint = uri.searchParams.get("checkpoint");
       const limit = uri.searchParams.get("limit") ? parseInt(uri.searchParams.get("limit")!) : undefined;
 
-      // 로그 파일 경로 결정
+      // Determine log file path
       const logPath = checkpoint
         ? path.join(LOG_DIR, `browser-console.${checkpoint}.log`)
         : path.join(LOG_DIR, 'browser-console.log');
 
-      // 파일이 존재하지 않으면 빈 배열 반환
+      // Return empty array if file doesn't exist
       if (!await fs.access(logPath).then(() => true).catch(() => false)) {
         return { contents: [] };
       }
 
-      // 로그 파일 읽기
+      // Read log file
       const logs: ConsoleMessage[] = [];
       const fileStream = createReadStream(logPath);
       const rl = readline.createInterface({
@@ -59,16 +55,16 @@ export function registerConsoleResource(server: McpServer, projectRoot: string) 
             const log = JSON.parse(line);
             logs.push(log);
           } catch (error) {
-            // 잘못된 JSON 라인은 무시
+            // Ignore invalid JSON lines
             continue;
           }
         }
       }
 
-      // 최신 순으로 정렬
+      // Sort by most recent first
       logs.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
 
-      // limit이 지정된 경우 해당 개수만큼만 반환
+      // Return only the specified number of logs if limit is provided
       const limitedLogs = limit ? logs.slice(0, limit) : logs;
 
       return {

@@ -1,33 +1,33 @@
 # Changesets
 
-이 디렉토리는 [changesets](https://github.com/changesets/changesets) CLI에 의해 관리됩니다.
+This directory is managed by the [changesets](https://github.com/changesets/changesets) CLI.
 
-변경 사항을 기록하고 릴리스를 관리하기 위해 다음 명령어를 사용하세요:
+Use the following commands to record changes and manage releases:
 
-## 변경 사항 생성하기
+## Creating a Change
 
-새로운 변경 사항을 기록하려면 다음 명령어를 실행하세요:
+To record a new change, run the following command:
 
 ```bash
 npm run changeset
 ```
 
-이 명령은 변경 유형(major, minor, patch)과 변경 내용에 대한 설명을 요청합니다.
+This command will ask for the type of change (major, minor, patch) and a description of the change.
 
-## 버전 업데이트하기
+## Updating Versions
 
-기록된 변경 사항을 기반으로, 버전을 업데이트하려면 다음 명령어를 실행하세요:
+To update versions based on recorded changes, run the following command:
 
 ```bash
 npm run version
 ```
 
-## 릴리스하기
+## Releasing
 
-새 버전을 npm에 배포하려면 다음 명령어를 실행하세요:
+To publish a new version to npm, run the following command:
 
 ```bash
 npm run release
 ```
 
-이 명령은 먼저 프로젝트를 빌드한 후 changeset을 사용하여 npm에 배포합니다. 
+This command will first build the project and then use changeset to publish to npm. 

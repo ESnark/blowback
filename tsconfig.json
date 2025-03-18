@@ -1,26 +1,26 @@
 {
   "compilerOptions": {
-    "target": "ES2022",           /* 최신 ECMAScript 기능을 지원하도록 ES2022로 설정 */
-    "module": "NodeNext",         /* Node.js의 ES 모듈 지원에 맞게 설정 */
-    "moduleResolution": "NodeNext", /* Node.js의 ES 모듈 해석 방식 사용 */
-    "esModuleInterop": true,      /* CommonJS 모듈을 ES Module처럼 가져올 수 있게 함 */
-    "forceConsistentCasingInFileNames": true, /* 파일 이름의 대소문자 일관성 강제 */
-    "strict": true,               /* 모든 엄격한 타입 체크 옵션 활성화 */
-    "skipLibCheck": true,         /* 선언 파일(.d.ts)의 타입 체크 건너뛰기 */
-    "outDir": "dist",             /* 컴파일된 JS 파일이 저장될 디렉토리 */
-    "declaration": true,          /* .d.ts 타입 선언 파일 자동 생성 */
-    "sourceMap": true,            /* 디버깅을 위한 소스맵 생성 */
-    "lib": [                      /* 사용할 라이브러리 목록 */
-      "ES2022",
-      "DOM"
+    "target": "ES2022",           /* Set to ES2022 to support recent ECMAScript features */
+    "module": "NodeNext",         /* Configure for Node.js ES module support */
+    "moduleResolution": "NodeNext", /* Use Node.js ES module resolution */
+    "esModuleInterop": true,      /* Allow importing CommonJS modules as ES Modules */
+    "forceConsistentCasingInFileNames": true, /* Enforce file name casing consistency */
+    "strict": true,               /* Enable all strict type checking options */
+    "skipLibCheck": true,         /* Skip type checking of declaration files (.d.ts) */
+    "outDir": "dist",             /* Directory where compiled JS files will be stored */
+    "declaration": true,          /* Automatically generate .d.ts type declaration files */
+    "sourceMap": true,            /* Generate source maps for debugging */
+    "lib": [                      /* List of libraries to use */
+      "es2022",
+      "dom"
     ],
-    "types": ["node"],            /* 포함할 타입 선언 패키지 */
-    "resolveJsonModule": true,    /* JSON 파일을 모듈처럼 가져올 수 있게 함 */
-    "allowSyntheticDefaultImports": true, /* default export가 없는 모듈에서 default import 허용 */
-    "noImplicitAny": true,        /* 암시적 any 타입 사용 시 에러 발생 */
-    "noImplicitThis": true,       /* this가 암시적 any 타입일 때 에러 발생 */
-    "strictNullChecks": true      /* null과 undefined 값을 더 엄격하게 체크 */
+    "types": ["node"],            /* Type declaration packages to include */
+    "resolveJsonModule": true,    /* Allow importing JSON files as modules */
+    "allowSyntheticDefaultImports": true, /* Allow default imports from modules without default export */
+    "noImplicitAny": true,        /* Generate error for expressions with implicit any type */
+    "noImplicitThis": true,       /* Generate error when this has implicit any type */
+    "strictNullChecks": true      /* More strictly check null and undefined values */
   },
-  "include": ["src/**/*"],        /* 컴파일할 파일 지정 */
-  "exclude": ["node_modules", "dist", "**/*.test.ts"] /* 컴파일에서 제외할 파일 */
+  "include": ["src/**/*"],        /* Specify files to compile */
+  "exclude": ["node_modules", "dist", "**/*.test.ts"] /* Files to exclude from compilation */
 }

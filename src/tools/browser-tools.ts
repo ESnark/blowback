@@ -6,9 +6,9 @@ import path from "path";
 import { HMREvent } from "../types/hmr.js";
 import { Logger } from "../utils/logger.js";
 import { randomUUID } from "crypto";
-import { LogManager, CheckpointLogManager } from "./log-manager.js";
-import { createReadStream } from "fs";
-import readline from "readline";
+import { LogManager } from './log-manager.js';
+import { LOG_DIRECTORY, SCREENSHOTS_DIRECTORY } from '../constants.js';
+import { Page, Browser, ElementHandle } from 'puppeteer';
 
 // Return type definition
 type BrowserStatus = {
@@ -30,15 +30,18 @@ export function registerBrowserTools(
   projectRootRef: { current: string },
   viteDevServerUrlRef: { current: string }
 ) {
-  const LOG_FILE_PATH = path.join(projectRootRef.current, 'dist', 'logs', 'browser-console.log');
-  const logManager = new LogManager(LOG_FILE_PATH);
+  // Set log file path
+  const DEFAULT_LOG_FILE_PATH = path.join(LOG_DIRECTORY, 'default.log');
   
-  // 로그를 파일에 기록하는 함수
+  // Get log manager instance
+  const logManager = LogManager.getInstance();
+  
+  // Function to record logs to file
   async function appendLogToFile(type: string, text: string) {
     try {
-      // meta 태그에서 현재 checkpoint ID 읽기
+      // Read current checkpoint ID from meta tag
       const checkpointId = await pageRef.current?.evaluate(() => {
-        const metaTag = document.querySelector('meta[name="__vite_hmr_cursor"]');
+        const metaTag = document.querySelector('meta[name="__mcp_checkpoint"]');
         return metaTag ? metaTag.getAttribute('data-hash') : null;
       }) || null;
 
@@ -51,18 +54,9 @@ export function registerBrowserTools(
         checkpointId
       }) + '\n';
 
-      // 기본 로그 파일에 기록
-      await logManager.appendLog(logEntry);
-
-      // checkpoint 로그 파일에도 기록 (checkpoint가 있는 경우)
-      if (checkpointId) {
-        const checkpointLogManager = CheckpointLogManager.getInstance();
-        await checkpointLogManager.appendLog(
-          checkpointId,
-          logEntry,
-          path.dirname(LOG_FILE_PATH)
-        );
-      }
+      // Record log
+      await logManager.appendLog(logEntry, checkpointId || undefined);
+      
     } catch (error) {
       Logger.error(`Failed to write console log to file: ${error}`);
     }
@@ -90,7 +84,7 @@ export function registerBrowserTools(
   // Utility function: Get current checkpoint ID
   const getCurrentCheckpointId = async (page: puppeteer.Page) => {
     const checkpointId = await page.evaluate(() => {
-      const metaTag = document.querySelector('meta[name="__vite_hmr_cursor"]');
+      const metaTag = document.querySelector('meta[name="__mcp_checkpoint"]');
       return metaTag ? metaTag.getAttribute('data-hash') : null;
     });
     return checkpointId;
@@ -120,15 +114,17 @@ export function registerBrowserTools(
         pageRef.current = await browserRef.current.newPage();
         await pageRef.current.setViewport({ width: 1280, height: 800 });
         
-        // 콘솔 메시지 핸들러
+        Logger.info("Browser started", pageRef.current);
+        // Console message handler
         pageRef.current.on('console', async msg => {
+          Logger.info("Browser console", msg);
           const messageText = msg.text();
           const messageType = msg.type();
           await appendLogToFile(messageType, messageText);
           Logger.debug(`Browser console ${messageType}: ${messageText}`);
         });
         
-        // 페이지 에러 핸들러
+        // Page error handler
         pageRef.current.on('pageerror', async err => {
           await appendLogToFile('error', err.message);
           Logger.error(`Browser page error: ${err}`);
@@ -144,7 +140,7 @@ export function registerBrowserTools(
           }
         });
 
-        // 페이지 이동 이벤트 리스너 설정
+        // Set up page navigation event listener
         pageRef.current.on('framenavigated', async frame => {
           if (frame === pageRef.current?.mainFrame()) {
             const url = frame.url();
@@ -233,16 +229,15 @@ export function registerBrowserTools(
           // Generate filename: YYYY-MM-DD.{checkpoint_hash}.png
           const filename = `${new Date().toISOString().split('T')[0]}.${hashForFilename}.png`;
           
-          // Create screenshots directory in project root
-          const screenshotsDir = path.join(projectRootRef.current, 'screenshots');
+          // Create screenshots directory if it doesn't exist
           try {
-            await fs.mkdir(screenshotsDir, { recursive: true });
+            await fs.mkdir(SCREENSHOTS_DIRECTORY, { recursive: true });
           } catch (error) {
             Logger.error(`Failed to create screenshots directory: ${error}`);
           }
           
           // Full file path
-          screenshotFilepath = path.join(screenshotsDir, filename);
+          screenshotFilepath = path.join(SCREENSHOTS_DIRECTORY, filename);
           
           // Save file
           if (typeof screenshot === 'string') {
@@ -686,26 +681,28 @@ export function registerBrowserTools(
       checkpoint: z.string().optional().describe("If specified, returns only logs recorded at this checkpoint"),
       limit: z.number().optional().describe("Number of logs to return, starting from the most recent log")
     },
-    async ({ checkpoint, limit }) => {
+    async ({ checkpoint, limit = 100 }) => {
       try {
-        const logPath = checkpoint
-          ? path.join(path.dirname(LOG_FILE_PATH), `browser-console.${checkpoint}.log`)
-          : LOG_FILE_PATH;
-
-        Logger.info(`Reading logs from: ${logPath}`);
-
-        // 체크포인트별 로그 매니저 생성
-        const logManager = new LogManager(logPath);
+        // Read logs (always provide limit value)
+        const result = await logManager.readLogs(limit, checkpoint);
         
-        // 로그 읽기
-        const { logs } = await logManager.readLogs(limit);
+        // Parse logs
+        const parsedLogs = result.logs.map((log: string) => {
+          try {
+            return JSON.parse(log);
+          } catch (error) {
+            return { type: "unknown", text: log, timestamp: new Date().toISOString() };
+          }
+        });
         
         return {
           content: [
             {
               type: "text",
               text: JSON.stringify({
-                logs,
+                logs: parsedLogs,
+                writePosition: result.writePosition,
+                totalLogs: result.totalLogs
               }, null, 2)
             }
           ]
@@ -970,7 +967,7 @@ Examples are available in the schema definition.`,
               await new Promise(resolve => setTimeout(resolve, args.time as number));
               return `Waited for ${args.time}ms`;
             } else if (args.function) {
-              // 대기 조건만 한정적으로 허용
+              // Only allow limited wait conditions
               await page.waitForFunction(
                 `document.querySelectorAll('${args.functionSelector}').length ${args.functionOperator || '>'} ${args.functionValue || 0}`,
                 { timeout: args.timeout as number || 5000 }

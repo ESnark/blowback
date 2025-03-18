@@ -30,7 +30,11 @@ async function main() {
     const server = new McpServer({
       name: "vite-hmr-server",
       version: "1.0.0",
-      description: "Connects to Vite development server to track changes in your project and provide real-time feedback on the results",
+      description: `Connects to Vite development server to track changes in your project and provide real-time feedback on the results.
+
+Supports checkpoint-based state management for comparing browser states, logs, and screenshots at specific points in time.
+
+Use checkpoints by inserting '<meta name="__mcp_checkpoint" data-id="">' into the head to create a named snapshot of the current state.`,
       capabilities: {
         tools: {}
       }
