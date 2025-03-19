@@ -1,8 +1,8 @@
 import fs from 'fs';
 import path from 'path';
 import readline from 'readline';
-import { Logger } from '../utils/logger.js';
 import { LOG_DIRECTORY } from '../constants.js';
+import { Logger } from '../utils/logger.js';
 
 /**
  * Manages log files with rotation implementation
@@ -14,7 +14,7 @@ export class LogManager {
   private readonly MAX_LOGS_PER_FILE: number = 10000;
   private readonly logDir = LOG_DIRECTORY;
   private currentFileNumber: number = 0;
-  
+
   // Checkpoint related fields
   private checkpointStreams: Map<string, {
     writeStream: fs.WriteStream | null;
@@ -31,7 +31,7 @@ export class LogManager {
     }
 
     this.initializeLogFile();
-    
+
     // Clean up all streams when process exits
     process.on('beforeExit', () => {
       this.closeAll();
@@ -57,7 +57,7 @@ export class LogManager {
 
     return LogManager.instance;
   }
-  
+
   private getLogFilePath(fileNumber: number, checkpointId?: string): string {
     const filename = checkpointId ? `chk-${checkpointId}-${fileNumber}.log` : `default-log-${fileNumber}.log`;
     return path.join(this.logDir, filename);
@@ -78,9 +78,7 @@ export class LogManager {
         Logger.error(`Log file write stream error for ${logFilePath}: ${error}`);
       });
 
-      if (checkpointId && this.checkpointStreams.get(checkpointId) && this.checkpointStreams.get(checkpointId)?.writeStream !== null) {
-        this.attachCheckpointStream(checkpointId);
-      } else if (checkpointId) {
+      if (checkpointId) {
         this.checkpointStreams.get(checkpointId)?.writeStream?.end();
         this.checkpointStreams.set(checkpointId, {
           writeStream,
@@ -161,8 +159,14 @@ export class LogManager {
       });
 
       // Append log to checkpoint log file
-      if (checkpointId && this.isCheckpointStreamAttached(checkpointId) === false) {
-        await this.attachCheckpointStream(checkpointId);
+      if (checkpointId) {
+        if (!this.checkpointStreams.has(checkpointId)) {
+          this.initializeLogFile({ checkpointId });
+        } else if (this.isCheckpointStreamAttached(checkpointId) === false) {
+          await this.attachCheckpointStream(checkpointId);
+        }
+
+        this.detachCheckpointStreams();
       }
 
       if (checkpointId) {
@@ -196,10 +200,10 @@ export class LogManager {
     try {
       // 1. Calculate necessary information
       const logDir = path.dirname(this.getLogFilePath(0, checkpointId));
-      const filePattern = checkpointId ? 
-        new RegExp(`^chk-${checkpointId}-(\\d+)\\.log$`) : 
+      const filePattern = checkpointId ?
+        new RegExp(`^chk-${checkpointId}-(\\d+)\\.log$`) :
         /^default-log-(\d+)\.log$/;
-      
+
       // 2. Find log files in directory
       const files = fs.existsSync(logDir) ? fs.readdirSync(logDir) : [];
       const logFiles = files
@@ -214,15 +218,15 @@ export class LogManager {
         })
         .filter(item => item.number >= 0)
         .sort((a, b) => a.number - b.number); // Sort in order (oldest first)
-      
+
       if (logFiles.length === 0) {
         return { logs: [], writePosition: 0, totalLogs: 0 };
       }
-      
+
       // 3. Calculate total number of logs (completed files + current file log count)
       const lastFileIndex = logFiles.length - 1;
       const completedFilesLogs = lastFileIndex * this.MAX_LOGS_PER_FILE;
-      
+
       // Get log count of the last file
       let currentFileLogCount = 0;
       if (checkpointId) {
@@ -231,58 +235,58 @@ export class LogManager {
       } else {
         currentFileLogCount = this.currentLogCount;
       }
-      
+
       const totalLogs = completedFilesLogs + currentFileLogCount;
-      
+
       // 4. Return empty result if no logs needed
       if (totalLogs === 0) {
         return { logs: [], writePosition: currentFileLogCount, totalLogs: 0 };
       }
-      
+
       // 5. Calculate start position and number of logs to read
       const startPosition = Math.max(0, totalLogs - limit);
       const startFileIndex = Math.floor(startPosition / this.MAX_LOGS_PER_FILE);
       const startLogInFile = startPosition % this.MAX_LOGS_PER_FILE;
-      
+
       // 6. Read log files (using stream)
       const logs: string[] = [];
       let logsNeeded = Math.min(limit, totalLogs);
-      
+
       for (let i = startFileIndex; i < logFiles.length && logsNeeded > 0; i++) {
         const filePath = logFiles[i].path;
         if (!fs.existsSync(filePath)) continue;
-        
+
         // Read line by line using readline interface
         const rl = readline.createInterface({
           input: fs.createReadStream(filePath, { encoding: 'utf-8' }),
           crlfDelay: Infinity
         });
-        
+
         let skippedLines = 0;
-        
+
         // Skip lines if this is the first file and has a start position
         const shouldSkipLines = (i === startFileIndex && startLogInFile > 0);
         const linesToSkip = shouldSkipLines ? startLogInFile : 0;
-        
+
         for await (const line of rl) {
           if (!line.trim()) continue;
-          
+
           // Skip necessary lines
           if (shouldSkipLines && skippedLines < linesToSkip) {
             skippedLines++;
             continue;
           }
-          
+
           logs.push(line);
           logsNeeded--;
-          
+
           if (logsNeeded <= 0) {
             rl.close();
             break;
           }
         }
       }
-      
+
       // 7. Return result
       return {
         logs,
@@ -311,17 +315,17 @@ export class LogManager {
       this.writeStream = null;
     }
   }
-  
+
   public closeAll(): void {
     // Close default log stream
     this.close();
-    
+
     // Close all checkpoint streams
     for (const [checkpointId, streamData] of this.checkpointStreams.entries()) {
       streamData.writeStream?.end();
       Logger.info(`Closed checkpoint log stream for ${checkpointId}`);
     }
-    
+
     this.checkpointStreams.clear();
   }
-} 
+}

@@ -25,19 +25,11 @@ Add the server to your Cursor MCP configuration:
 
 ## Resources
 
-### console-logs
+### ~~console-logs~~
 
-A resource for querying browser console logs.
+A resource for retrieving browser console logs.
 
-Currently not supported in Cursor, use the `get-console-logs` tool instead.
-
-```typescript
-// Query logs
-const logs = await mcpServer.resource("console-logs", {
-  checkpoint: "checkpoint-1", // Optional: Query logs for a specific checkpoint
-  limit: 10 // Optional: Limit the number of logs to return
-});
-```
+Note: The MCP Resource feature is not supported by Cursor at the moment. Please use the `get-console-logs` tool instead.
 
 ## Tools
 
@@ -106,7 +98,7 @@ The server maintains several important data stores:
 
 ### Communication Flow
 
-1. **Vite → MCP Server**: 
+1. **Vite → MCP Server**:
    - Vite transmits real-time HMR events via WebSocket when files change.
    - Events include updates (successful changes) and errors (compilation failures).
 

@@ -25,19 +25,13 @@ Cursor의 MCP 설정에 서버를 추가합니다:
 
 ## Resources
 
-### console-logs
+### ~~console-logs~~
 
 브라우저 콘솔 로그를 조회하는 리소스입니다.
 
-현재 Cursor에서는 지원되지 않으므로 `get-console-logs` tool을 사용하면 됩니다.
+현재 Cursor에서는 리소스를 지원되지 않으므로 `get-console-logs` tool을 사용하면 됩니다.
 
-```typescript
-// 로그 조회
-const logs = await mcpServer.resource("console-logs", {
-  checkpoint: "checkpoint-1", // 선택적: 특정 체크포인트의 로그만 조회
-  limit: 10 // 선택적: 반환할 로그 개수 제한
-});
-```
+추후 개발 예정입니다.
 
 ## Tools
 
@@ -45,15 +39,16 @@ const logs = await mcpServer.resource("console-logs", {
 
 | 도구 이름 | 설명 |
 |-----------|-------------|
-| `init-vite-connection` | 프로젝트의 개발 서버에 연결합니다 |
 | `get-hmr-events` | 최근 HMR 이벤트를 가져옵니다 |
 | `check-hmr-status` | HMR 상태를 확인합니다 |
+
+> **참고**: HMR 연결은 필수가 아닌 선택적입니다. 브라우저가 시작되면 자동으로 HMR 이벤트 모니터링이 시작됩니다.
 
 ### 브라우저 도구
 
 | 도구 이름 | 설명 |
 |-----------|-------------|
-| `start-browser` | 브라우저 인스턴스를 시작하고 Vite 개발 서버로 이동합니다 |
+| `start-browser` | 브라우저 인스턴스를 시작하고 Vite 개발 서버로 이동합니다. HMR 모니터링이 자동으로 시작됩니다 |
 | `capture-screenshot` | 현재 페이지 또는 특정 요소의 스크린샷을 캡처합니다 |
 | `get-element-properties` | 특정 요소의 속성 및 상태 정보를 가져옵니다 |
 | `get-element-styles` | 특정 요소의 스타일 정보를 가져옵니다 |
@@ -63,10 +58,15 @@ const logs = await mcpServer.resource("console-logs", {
 | `get-console-logs` | 브라우저 세션에서 콘솔 로그를 가져오며, 선택적으로 필터링이 가능합니다 |
 | `execute-browser-commands` | 미리 정의된 브라우저 명령을 안전하게 실행합니다 |
 
+### 도움말 도구
+
+| 도구 이름 | 설명 |
+|-----------|-------------|
+| `how-to-use` | 서버의 특정 기능 사용법에 대한 설명을 제공합니다 |
+
 ## 로그 관리 시스템
 
 - 브라우저의 console log를 캡쳐하여 파일에 저장하고 조회합니다
-- 일반 로그와 체크포인트 로그가 각각 순환 버퍼 방식으로 1000줄까지 저장됩니다
 - 체크포인트 로그는 체크포인트가 활성화 된 경우에만 저장됩니다
 
 ## 체크포인트 시스템
@@ -97,7 +97,7 @@ const logs = await mcpServer.resource("console-logs", {
 
 ### 통신 흐름
 
-1. **Vite → MCP 서버**: 
+1. **Vite → MCP 서버**:
    - Vite는 파일이 변경될 때 WebSocket을 통해 실시간 HMR 이벤트를 전송합니다.
    - 이벤트에는 업데이트(성공적인 변경) 및 오류(컴파일 실패)가 포함됩니다.
 

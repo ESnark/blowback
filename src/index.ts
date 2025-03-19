@@ -2,12 +2,12 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import puppeteer from 'puppeteer';
-import { HMREvent } from './types/hmr.js';
+import { z } from 'zod';
 import { ViteHMRClient } from './clients/vite-hmr-client.js';
-import { registerHMRTools } from './tools/hmr-tools.js';
 import { registerBrowserTools } from './tools/browser-tools.js';
+import { registerHMRTools } from './tools/hmr-tools.js';
+import { HMREvent } from './types/hmr.js';
 import { Logger } from './utils/logger.js';
-import { registerConsoleResource } from './resources/console.js';
 
 /**
  * Main entry point for MCP Vite HMR server
@@ -20,7 +20,6 @@ async function main() {
     const viteClientRef = { current: null as ViteHMRClient | null };
     const browserRef = { current: null as puppeteer.Browser | null };
     const pageRef = { current: null as puppeteer.Page | null };
-    const projectRootRef = { current: process.cwd() };
     const viteDevServerUrlRef = { current: 'http://localhost:5173' };
 
     // Array to store recent HMR events
@@ -76,16 +75,15 @@ The HMR connection is optional.
     });
 
     // Register tools and resources
-    registerHMRTools(server, lastHMREvents, viteClientRef, projectRootRef);
+    registerHMRTools(server, lastHMREvents);
     registerBrowserTools(
       server,
       browserRef,
       pageRef,
       lastHMREvents,
-      projectRootRef,
       viteDevServerUrlRef
     );
-    registerConsoleResource(server, projectRootRef.current);
+    // registerConsoleResource(server);
 
     // Set up stdio transport and connect
     const transport = new StdioServerTransport();

@@ -26,7 +26,6 @@ export function registerBrowserTools(
   browserRef: { current: puppeteer.Browser | null },
   pageRef: { current: puppeteer.Page | null },
   lastHMREvents: HMREvent[],
-  projectRootRef: { current: string },
   viteDevServerUrlRef: { current: string }
 ) {
   // Get log manager instance
@@ -38,7 +37,7 @@ export function registerBrowserTools(
       // Read current checkpoint ID from meta tag
       const checkpointId = await pageRef.current?.evaluate(() => {
         const metaTag = document.querySelector('meta[name="__mcp_checkpoint"]');
-        return metaTag ? metaTag.getAttribute('data-hash') : null;
+        return metaTag ? metaTag.getAttribute('data-id') : null;
       }) || null;
 
       const url = await pageRef.current?.evaluate(() => window.location.href) || 'unknown';
@@ -81,7 +80,7 @@ export function registerBrowserTools(
   const getCurrentCheckpointId = async (page: puppeteer.Page) => {
     const checkpointId = await page.evaluate(() => {
       const metaTag = document.querySelector('meta[name="__mcp_checkpoint"]');
-      return metaTag ? metaTag.getAttribute('data-hash') : null;
+      return metaTag ? metaTag.getAttribute('data-id') : null;
     });
     return checkpointId;
   };
@@ -110,7 +109,47 @@ export function registerBrowserTools(
         pageRef.current = await browserRef.current.newPage();
         await pageRef.current.setViewport({ width: 1280, height: 800 });
 
-        Logger.info('Browser started', pageRef.current);
+        // Create CDP session and enable network monitoring
+        const cdpClient = await pageRef.current.createCDPSession();
+        await cdpClient.send('Network.enable');
+
+        // Set up WebSocket event listener
+        cdpClient.on('Network.webSocketCreated', params => {
+          Logger.info(`WebSocket created: ${params.url}`);
+
+          // Detect HMR-related WebSocket connections (URLs containing localhost, token, or hmr)
+          if (params.url.includes('localhost') || params.url.includes('?token=') || params.url.includes('hmr')) {
+            Logger.info(`HMR WebSocket detected: ${params.url}`);
+          }
+        });
+
+        // Detect WebSocket message reception
+        cdpClient.on('Network.webSocketFrameReceived', params => {
+          try {
+            const data = JSON.parse(params.response.payloadData);
+            Logger.debug(`WebSocket message received: ${JSON.stringify(data)}`);
+
+            // Convert to HMR event
+            if (data.type) {
+              const hmrEvent = {
+                type: data.type,
+                ...data,
+                timestamp: new Date().toISOString()
+              };
+
+              // Store event
+              lastHMREvents.unshift(hmrEvent);
+              if (lastHMREvents.length > 10) {
+                lastHMREvents.pop();
+              }
+
+              Logger.info(`HMR event detected: ${data.type}`);
+            }
+          } catch (err) {
+            // Ignore non-JSON messages
+          }
+        });
+
         // Console message handler
         pageRef.current.on('console', async msg => {
           Logger.info('Browser console', msg);
@@ -118,6 +157,23 @@ export function registerBrowserTools(
           const messageType = msg.type();
           await appendLogToFile(messageType, messageText);
           Logger.debug(`Browser console ${messageType}: ${messageText}`);
+
+          // Filter HMR-related console messages
+          if (messageText.includes('[vite]') ||
+              messageText.includes('hmr') ||
+              messageText.includes('update')) {
+            // Extract HMR-related information from console logs
+            const hmrEvent = {
+              type: messageText.includes('error') ? 'error' : 'update',
+              message: messageText,
+              timestamp: new Date().toISOString()
+            };
+
+            lastHMREvents.unshift(hmrEvent);
+            if (lastHMREvents.length > 10) {
+              lastHMREvents.pop();
+            }
+          }
         });
 
         // Page error handler
@@ -152,7 +208,7 @@ export function registerBrowserTools(
           content: [
             {
               type: 'text',
-              text: `Successfully started browser and navigated to ${viteServerUrl}`
+              text: `Successfully started browser and navigated to ${viteServerUrl}. HMR monitoring is active.`
             }
           ]
         };
