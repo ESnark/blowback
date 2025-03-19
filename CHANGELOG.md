@@ -1,5 +1,11 @@
 # vite-mcp-server
 
+## 0.3.0
+
+### Minor Changes
+
+- 005b0f9: Package name is changed (Blowback)
+
 ## 0.2.0
 
 ### Minor Changes
