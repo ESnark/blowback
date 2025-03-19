@@ -1,6 +1,6 @@
 {
   "name": "vite-mcp-server",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "description": "MCP server that integrates with Vite development server for Cursor",
   "main": "dist/index.js",
   "type": "module",
