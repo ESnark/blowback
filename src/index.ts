@@ -3,7 +3,6 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import puppeteer from 'puppeteer';
 import { z } from 'zod';
-import { ViteHMRClient } from './clients/vite-hmr-client.js';
 import { registerBrowserTools } from './tools/browser-tools.js';
 import { registerHMRTools } from './tools/hmr-tools.js';
 import { HMREvent } from './types/hmr.js';
@@ -17,7 +16,6 @@ async function main() {
   try {
     // Reference objects for state management
     // Using object references so values can be updated from other modules
-    const viteClientRef = { current: null as ViteHMRClient | null };
     const browserRef = { current: null as puppeteer.Browser | null };
     const pageRef = { current: null as puppeteer.Page | null };
     const viteDevServerUrlRef = { current: 'http://localhost:5173' };
@@ -92,9 +90,6 @@ The HMR connection is optional.
 
     // Clean up resources on exit
     process.on('exit', () => {
-      if (viteClientRef.current) {
-        viteClientRef.current.close();
-      }
       if (browserRef.current) {
         browserRef.current.close().catch(error => {
           Logger.error('Error closing browser:', error);

@@ -7,8 +7,6 @@ Adds a Model Context Protocol (MCP) server to the Vite development server to sup
 - Integration of Vite development server with MCP server
 - Browser console log capture and transmission via MCP
 - Checkpoint-based log management
-- Log storage using circular buffer (up to 1000 lines)
-- Checkpoint-specific log file management (maintains up to 2 checkpoints)
 
 ## Installation
 
