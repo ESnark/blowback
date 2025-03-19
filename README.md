@@ -1,6 +1,10 @@
 # Vite MCP Server
 
-Adds a Model Context Protocol (MCP) server to the Vite development server to support integration with Cursor.
+> Vite MCP Server is now Blowback
+>
+> Blowback aims to support various FE development servers, not only Vite
+
+[Blowback](https://www.npmjs.com/package/blowback-context)
 
 ## Key Features
 
@@ -16,7 +20,7 @@ Add the server to your Cursor MCP configuration:
 {
   "vite-hmr": {
     "command": "npx",
-    "args": ["-y", "vite-mcp-server"]
+    "args": ["-y", "blowback-context"]
   }
 }
 ```
