@@ -37,7 +37,6 @@ Note: The MCP Resource feature is not supported by Cursor at the moment. Please 
 
 | Tool Name | Description |
 |-----------|-------------|
-| `init-vite-connection` | Connects to the project's development server |
 | `get-hmr-events` | Retrieves recent HMR events |
 | `check-hmr-status` | Checks the HMR status |
 
@@ -55,19 +54,17 @@ Note: The MCP Resource feature is not supported by Cursor at the moment. Please 
 | `get-console-logs` | Retrieves console logs from the browser session with optional filtering |
 | `execute-browser-commands` | Safely executes predefined browser commands |
 
+### How to use Tools
+
+| Tool Name | Description |
+|-----------|-------------|
+| `how-to-use` | Provides instructions on how to use the tool |
+
 ## Log Management System
 
 ### Log Management Method
 
-- All browser console logs are stored up to 1000 lines using a circular buffer method
-- When logs exceed the maximum count, the oldest logs are overwritten
-- Logs can only be retrieved when there is an active stream
-- Logs are stored in chronological order by timestamp
-
-### Checkpoint Logs
-
-- When a checkpoint is created, logs at that point are stored in a separate file (`browser-console.{checkpointId}.log`)
-- Only up to 2 checkpoint log files are maintained, with the oldest file being deleted when a new checkpoint is created
+- All browser console logs are stored in log files
 - You can query logs for specific checkpoints using the `get-console-logs` tool
 
 ## Checkpoint System
@@ -80,13 +77,11 @@ Note: The MCP Resource feature is not supported by Cursor at the moment. Please 
 
 ### Core Components
 
-1. **MCP Server**: A central module based on the Model Context Protocol SDK that provides tools to Cursor.
+1. **MCP Server**: A central module based on the Model Context Protocol SDK that provides tools to MCP Client.
 
-2. **Vite HMR Client**: Sets up and maintains WebSocket connection with the Vite development server and subscribes to HMR events.
+2. **Browser Automation**: Controls Chrome using Puppeteer to visually inspect changes.
 
-3. **Browser Automation**: Controls Chrome using Puppeteer to visually inspect changes.
-
-4. **Checkpoint System**: Maintains snapshots of browser states for comparison and testing.
+3. **Checkpoint System**: Maintains snapshots of browser states for comparison and testing.
 
 ### Data Sources and State Management
 
@@ -98,17 +93,17 @@ The server maintains several important data stores:
 
 ### Communication Flow
 
-1. **Vite → MCP Server**:
-   - Vite transmits real-time HMR events via WebSocket when files change.
-   - Events include updates (successful changes) and errors (compilation failures).
+1. **MCP Client → Development Server**:
+   - MCP Client changes the source code and Development Server detects the change
+   - Development Server updates the browser or emits HMR events automatically
 
-2. **MCP Server → Cursor**:
+2. **Web Browser → MCP Server**:
+   - HMR events and console logs are captured through Puppeteer.
+   - MCP Server queries the current state of the browser or captures a screenshot
+
+3. **MCP Server → MCP Client**:
    - The server converts HMR events into structured responses.
-   - Provides tools for Cursor to query HMR status and capture screenshots.
-
-3. **Browser → MCP Server**:
-   - Visual changes are captured through Puppeteer.
-   - Console output and errors are collected for debugging.
+   - Provides tools for MCP Client to query HMR status and capture screenshots.
 
 ### State Maintenance
 
