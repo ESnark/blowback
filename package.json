@@ -1,5 +1,5 @@
 {
-  "name": "blowback",
+  "name": "blowback-context",
   "version": "0.3.0",
   "description": "MCP server that integrates with FE development server for Cursor",
   "main": "dist/index.js",
@@ -63,7 +63,7 @@
     "node": ">=20.0.0"
   },
   "bin": {
-    "blowback": "./dist/index.js"
+    "blowback-context": "./dist/index.js"
   },
   "files": [
     "dist",
