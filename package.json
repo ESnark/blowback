@@ -1,7 +1,7 @@
 {
-  "name": "vite-mcp-server",
+  "name": "blowback",
   "version": "0.2.0",
-  "description": "MCP server that integrates with Vite development server for Cursor",
+  "description": "MCP server that integrates with FE development server for Cursor",
   "main": "dist/index.js",
   "type": "module",
   "scripts": {
@@ -29,11 +29,11 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/ESnark/vite-mcp-server.git"
+    "url": "git+https://github.com/ESnark/blowback.git"
   },
-  "homepage": "https://github.com/ESnark/vite-mcp-server#readme",
+  "homepage": "https://github.com/ESnark/blowback#readme",
   "bugs": {
-    "url": "https://github.com/ESnark/vite-mcp-server/issues"
+    "url": "https://github.com/ESnark/blowback/issues"
   },
   "publishConfig": {
     "access": "public"
@@ -63,7 +63,7 @@
     "node": ">=20.0.0"
   },
   "bin": {
-    "vite-mcp-server": "./dist/index.js"
+    "blowback": "./dist/index.js"
   },
   "files": [
     "dist",

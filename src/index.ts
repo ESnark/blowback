@@ -9,7 +9,6 @@ import { HMREvent } from './types/hmr.js';
 import { Logger } from './utils/logger.js';
 
 /**
- * Main entry point for MCP Vite HMR server
  * Initializes the server, registers tools, and starts communication with clients using stdio transport
  */
 async function main() {
@@ -18,16 +17,16 @@ async function main() {
     // Using object references so values can be updated from other modules
     const browserRef = { current: null as puppeteer.Browser | null };
     const pageRef = { current: null as puppeteer.Page | null };
-    const viteDevServerUrlRef = { current: 'http://localhost:5173' };
+    const devServerUrlRef = { current: 'http://localhost:5173' };
 
     // Array to store recent HMR events
     const lastHMREvents: HMREvent[] = [];
 
     // Create MCP server instance
     const server = new McpServer({
-      name: 'vite-mcp-server',
+      name: 'FE-dev-server',
       version: '1.0.0',
-      description: 'Connects to Vite development server to track changes in your project and provide real-time feedback on the results.',
+      description: 'Connects to frontend development server to track changes in your project and provide real-time feedback on the results.',
       capabilities: {
         tools: {}
       }
@@ -47,8 +46,7 @@ The data-id attribute is a unique identifier for the checkpoint.
 
 Console logs generated in the browser while a checkpoint is active are tagged with the checkpoint ID and can be queried individually.
 
-Note: Since hot reload is triggered when files are saved, carefully consider the sequence between meta tag changes and the changes you want to observe. Make sure to set the checkpoint meta tag before making the changes you want to track.
-              ` }
+Note: Since hot reload is triggered when files are saved, carefully consider the sequence between meta tag changes and the changes you want to observe. Make sure to set the checkpoint meta tag before making the changes you want to track.` }
           ]
         };
       case 'hmr':
@@ -60,7 +58,8 @@ If the HMR connection is established with the client, the server will automatica
 You can read the HMR events using the 'get-hmr-events' tool.
 
 The HMR connection is optional.
-              ` }
+
+If your development environment does not support HMR, you cannot read HMR events, but you can still check the results of file modifications by using 'execute-browser-commands' to refresh the page.` }
           ]
         };
       default:
@@ -79,14 +78,14 @@ The HMR connection is optional.
       browserRef,
       pageRef,
       lastHMREvents,
-      viteDevServerUrlRef
+      devServerUrlRef
     );
     // registerConsoleResource(server);
 
     // Set up stdio transport and connect
     const transport = new StdioServerTransport();
     await server.connect(transport);
-    Logger.info('MCP Vite HMR Server running on stdio transport');
+    Logger.info('FE Dev Server running on stdio transport');
 
     // Clean up resources on exit
     process.on('exit', () => {

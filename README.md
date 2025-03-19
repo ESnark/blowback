@@ -1,10 +1,14 @@
-# Vite MCP Server
+# Blowback
 
-Adds a Model Context Protocol (MCP) server to the Vite development server to support integration with Cursor.
+> Vite MCP Server is now Blowback
+>
+> Blowback aims to support various FE development servers, not only Vite
+
+Adds a Model Context Protocol (MCP) server to the FE development server to support integration with Cursor.
 
 ## Key Features
 
-- Integration of Vite development server with MCP server
+- Integration of FE development server with MCP server
 - Browser console log capture and transmission via MCP
 - Checkpoint-based log management
 
@@ -14,9 +18,9 @@ Add the server to your Cursor MCP configuration:
 
 ```json
 {
-  "vite-hmr": {
+  "blowback": {
     "command": "npx",
-    "args": ["-y", "vite-mcp-server"]
+    "args": ["-y", "blowback"]
   }
 }
 ```
@@ -107,6 +111,4 @@ The server maintains several important data stores:
 
 The server maintains reference objects for:
 - Current browser and page instances
-- Active Vite client connection
-- Project root path
 - Recent HMR events
