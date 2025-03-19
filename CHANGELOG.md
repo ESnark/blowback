@@ -1,5 +1,11 @@
 # vite-mcp-server
 
+## 0.3.1
+
+### Patch Changes
+
+- e17d00d: Update README.md
+
 ## 0.3.0
 
 ### Minor Changes
