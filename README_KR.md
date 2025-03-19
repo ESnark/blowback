@@ -20,7 +20,7 @@ Cursor의 MCP 설정에 서버를 추가합니다:
 {
   "blowback": {
     "command": "npx",
-    "args": ["-y", "blowback"]
+    "args": ["-y", "blowback-context"]
   }
 }
 ```

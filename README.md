@@ -20,7 +20,7 @@ Add the server to your Cursor MCP configuration:
 {
   "blowback": {
     "command": "npx",
-    "args": ["-y", "blowback"]
+    "args": ["-y", "blowback-context"]
   }
 }
 ```
