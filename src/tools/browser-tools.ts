@@ -4,7 +4,6 @@ import fs from 'fs/promises';
 import path from 'path';
 import puppeteer from 'puppeteer';
 import { z } from 'zod';
-import { SCREENSHOTS_DIRECTORY } from '../constants.js';
 import { HMREvent } from '../types/hmr.js';
 import { Logger } from '../utils/logger.js';
 import { LogManager } from './log-manager.js';
@@ -25,8 +24,7 @@ export function registerBrowserTools(
   server: McpServer,
   browserRef: { current: puppeteer.Browser | null },
   pageRef: { current: puppeteer.Page | null },
-  lastHMREvents: HMREvent[],
-  viteDevServerUrlRef: { current: string }
+  lastHMREvents: HMREvent[]
 ) {
   // Get log manager instance
   const logManager = LogManager.getInstance();
@@ -202,7 +200,6 @@ export function registerBrowserTools(
 
         // Navigate to Vite development server
         await pageRef.current.goto(viteServerUrl, { waitUntil: 'networkidle0' });
-        viteDevServerUrlRef.current = viteServerUrl;
 
         return {
           content: [
@@ -231,12 +228,15 @@ export function registerBrowserTools(
   // Screenshot capture tool
   server.tool(
     'capture-screenshot',
-    'Captures a screenshot of the current page or a specific element',
+    `Captures a screenshot of the current page or a specific element.
+This feature is for MCP Clients that do not support MCP Resource and image content type.
+If the image is successfully saved, you should request the user to provide the image.`,
     {
+      projectRoot: z.string().describe('Root directory path of the development project'),
       selector: z.string().optional().describe('CSS selector to capture (captures full page if not provided)'),
-      saveToFile: z.boolean().optional().describe('Whether to save as a file (default: false)')
+      url: z.string().optional().describe('URL to navigate to before capturing screenshot')
     },
-    async ({ selector, saveToFile = false }) => {
+    async ({ projectRoot, selector, url }) => {
       try {
         // Check browser status
         const browserStatus = ensureBrowserStarted();
@@ -244,11 +244,19 @@ export function registerBrowserTools(
           return browserStatus.error;
         }
 
+        // Get current URL
+        const currentUrl = browserStatus.page.url();
+
+        // If URL is provided and different from current URL, navigate to it
+        if (url && url !== currentUrl) {
+          Logger.info(`Navigating to ${url} before capturing screenshot`);
+          await browserStatus.page.goto(url, { waitUntil: 'networkidle0' });
+        }
+
         // Get current checkpoint ID
         const checkpointId = await getCurrentCheckpointId(browserStatus.page);
 
-        let screenshot: string | Buffer;
-        let screenshotFilepath: string | undefined;
+        let screenshot: Buffer;
 
         if (selector) {
           // Wait for element to appear
@@ -267,47 +275,46 @@ export function registerBrowserTools(
             };
           }
 
-          screenshot = await element.screenshot({ encoding: 'base64' });
+          const elementScreenshot = await element.screenshot({ encoding: 'binary' });
+          screenshot = elementScreenshot as Buffer;
         } else {
           // Capture full page
-          screenshot = await browserStatus.page.screenshot({ encoding: 'base64', fullPage: true });
+          const pageScreenshot = await browserStatus.page.screenshot({ encoding: 'binary', fullPage: true });
+          screenshot = pageScreenshot as Buffer;
         }
 
-        // Save to file if needed
-        if (saveToFile) {
-          // Use checkpoint ID or random ID for filename
-          const hashForFilename = checkpointId || randomUUID().substring(0, 8);
+        // Get final URL (may be different after navigation)
+        const finalUrl = browserStatus.page.url();
 
-          // Generate filename: YYYY-MM-DD.{checkpoint_hash}.png
-          const filename = `${new Date().toISOString().split('T')[0]}.${hashForFilename}.png`;
+        // Use checkpoint ID or random ID for filename
+        const hashForFilename = checkpointId || randomUUID().substring(0, 8);
 
-          // Create screenshots directory if it doesn't exist
-          try {
-            await fs.mkdir(SCREENSHOTS_DIRECTORY, { recursive: true });
-          } catch (error) {
-            Logger.error(`Failed to create screenshots directory: ${error}`);
-          }
+        // Generate filename: YYYY-MM-DD.{checkpoint_hash}.png
+        const filename = `${new Date().toISOString().split('T')[0]}.${hashForFilename}.png`;
 
-          // Full file path
-          screenshotFilepath = path.join(SCREENSHOTS_DIRECTORY, filename);
+        const projectScreenshotsDir = path.join(projectRoot, '.mcp_screenshot');
 
-          // Save file
-          if (typeof screenshot === 'string') {
-            await fs.writeFile(screenshotFilepath, Buffer.from(screenshot, 'base64'));
-          } else {
-            await fs.writeFile(screenshotFilepath, screenshot);
-          }
-
-          Logger.info(`Screenshot saved: ${screenshotFilepath}`);
+        // Create screenshots directory if it doesn't exist
+        try {
+          await fs.mkdir(projectScreenshotsDir, { recursive: true });
+        } catch (error) {
+          Logger.error(`Failed to create screenshots directory: ${error}`);
         }
+
+        // Full file path
+        const screenshotFilepath = path.join(projectScreenshotsDir, filename);
+
+        // Save file
+        await fs.writeFile(screenshotFilepath, screenshot);
+
+        Logger.info(`Screenshot saved: ${screenshotFilepath}`);
 
         // Result message construction
         const resultMessage = {
-          message: screenshotFilepath
-            ? `Screenshot saved to ${screenshotFilepath}`
-            : `Screenshot captured ${selector ? `of element "${selector}"` : 'of full page'}`,
-          filename: screenshotFilepath ? path.basename(screenshotFilepath) : undefined,
-          checkpointId
+          message: `Screenshot saved to ${screenshotFilepath}`,
+          filename: path.basename(screenshotFilepath),
+          checkpointId,
+          url: finalUrl,
         };
 
         return {
@@ -318,9 +325,7 @@ export function registerBrowserTools(
             },
             {
               type: 'image',
-              data: typeof screenshot === 'string'
-                ? screenshot
-                : (screenshot as Buffer).toString('base64'),
+              data: screenshot.toString('base64'),
               mimeType: 'image/png'
             }
           ]

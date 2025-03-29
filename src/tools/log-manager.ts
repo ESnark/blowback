@@ -299,16 +299,6 @@ export class LogManager {
     }
   }
 
-  private findAllLogFiles(checkpointId?: string): string[] {
-    const allLogFiles = [];
-    for (let i = 0; i < this.MAX_LOGS_PER_FILE; i++) {
-      const logFile = this.getLogFilePath(i, checkpointId);
-      allLogFiles.push(logFile);
-    }
-
-    return allLogFiles;
-  }
-
   public close(): void {
     if (this.writeStream) {
       this.writeStream.end();

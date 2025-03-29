@@ -3,6 +3,7 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import puppeteer from 'puppeteer';
 import { z } from 'zod';
+import { registerScreenshotResource } from './resources/screenshot.js';
 import { registerBrowserTools } from './tools/browser-tools.js';
 import { registerHMRTools } from './tools/hmr-tools.js';
 import { HMREvent } from './types/hmr.js';
@@ -17,18 +18,18 @@ async function main() {
     // Using object references so values can be updated from other modules
     const browserRef = { current: null as puppeteer.Browser | null };
     const pageRef = { current: null as puppeteer.Page | null };
-    const devServerUrlRef = { current: 'http://localhost:5173' };
 
     // Array to store recent HMR events
     const lastHMREvents: HMREvent[] = [];
 
     // Create MCP server instance
     const server = new McpServer({
-      name: 'FE-dev-server',
-      version: '1.0.0',
+      name: 'blowback-context',
+      version: '0.4.0',
       description: 'Connects to frontend development server to track changes in your project and provide real-time feedback on the results.',
       capabilities: {
-        tools: {}
+        tools: {},
+        resources: {}
       }
     });
 
@@ -77,15 +78,14 @@ If your development environment does not support HMR, you cannot read HMR events
       server,
       browserRef,
       pageRef,
-      lastHMREvents,
-      devServerUrlRef
+      lastHMREvents
     );
-    // registerConsoleResource(server);
+    registerScreenshotResource(server, browserRef, pageRef);
 
     // Set up stdio transport and connect
     const transport = new StdioServerTransport();
     await server.connect(transport);
-    Logger.info('FE Dev Server running on stdio transport');
+    Logger.info('Blowback Context Server running on stdio transport');
 
     // Clean up resources on exit
     process.on('exit', () => {

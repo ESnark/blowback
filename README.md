@@ -33,6 +33,12 @@ A resource for retrieving browser console logs.
 
 Note: The MCP Resource feature is not supported by Cursor at the moment. Please use the `get-console-logs` tool instead.
 
+### screenshot
+
+A resource for capturing and managing screenshots.
+
+Note: Like other resources, this is not directly supported by Cursor at the moment. Please use the `capture-screenshot` tool instead.
+
 ## Tools
 
 ### HMR Tools
@@ -47,7 +53,7 @@ Note: The MCP Resource feature is not supported by Cursor at the moment. Please 
 | Tool Name | Description |
 |-----------|-------------|
 | `start-browser` | Starts a browser instance and navigates to the Vite development server |
-| `capture-screenshot` | Captures a screenshot of the current page or a specific element |
+| `capture-screenshot` | Captures a screenshot of the current page or a specific element. Screenshots are saved to disk. Due to MCP client limitations, you may need to manually transfer saved screenshot images to your editing tools |
 | `get-element-properties` | Retrieves properties and state information of a specific element |
 | `get-element-styles` | Retrieves style information of a specific element |
 | `get-element-dimensions` | Retrieves dimension and position information of a specific element |
