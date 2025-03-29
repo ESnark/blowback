@@ -1,5 +1,12 @@
 # vite-mcp-server
 
+## 0.4.0
+
+### Minor Changes
+
+- 75ed979: - Update capture-screenshot tool description
+  - Add guidance on handling screenshot images due to MCP client limitations
+
 ## 0.3.1
 
 ### Patch Changes
