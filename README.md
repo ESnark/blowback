@@ -6,6 +6,8 @@
 
 Adds a Model Context Protocol (MCP) server to the FE development server to support integration with Cursor.
 
+[![smithery badge](https://smithery.ai/badge/@ESnark/blowback)](https://smithery.ai/server/@ESnark/blowback)
+
 ## Key Features
 
 - Integration of FE development server with MCP server
@@ -14,6 +16,15 @@ Adds a Model Context Protocol (MCP) server to the FE development server to suppo
 
 ## Installation
 
+### Installing via Smithery
+
+To install Blowback for Claude Desktop automatically via [Smithery](https://smithery.ai/server/@ESnark/blowback):
+
+```bash
+npx -y @smithery/cli install @ESnark/blowback -c claude
+```
+
+### Manual Installation
 Add the server to your Cursor MCP configuration:
 
 ```json
@@ -22,6 +33,7 @@ Add the server to your Cursor MCP configuration:
     "command": "npx",
     "args": ["-y", "blowback-context"]
   }
+}
 }
 ```
 
