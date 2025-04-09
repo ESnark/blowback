@@ -6,6 +6,8 @@
 
 Adds a Model Context Protocol (MCP) server to the FE development server to support integration with Cursor.
 
+[![smithery badge](https://smithery.ai/badge/@ESnark/vite-mcp-server)](https://smithery.ai/server/@ESnark/vite-mcp-server)
+
 ## Key Features
 
 - Integration of FE development server with MCP server
@@ -14,6 +16,15 @@ Adds a Model Context Protocol (MCP) server to the FE development server to suppo
 
 ## Installation
 
+### Installing via Smithery
+
+To install Vite MCP Server for Claude Desktop automatically via [Smithery](https://smithery.ai/server/@ESnark/vite-mcp-server):
+
+```bash
+npx -y @smithery/cli install @ESnark/vite-mcp-server --client claude
+```
+
+### Installing Manually
 Add the server to your Cursor MCP configuration:
 
 ```json
