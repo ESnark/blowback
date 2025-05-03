@@ -1,3 +1,5 @@
+[![MseeP.ai Security Assessment Badge](https://mseep.net/pr/esnark-blowback-badge.png)](https://mseep.ai/app/esnark-blowback)
+
 # Blowback
 
 > Vite MCP Server is now Blowback
