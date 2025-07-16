@@ -39,7 +39,7 @@
     "access": "public"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.8.0",
+    "@modelcontextprotocol/sdk": "^1.15.1",
     "playwright": "^1.49.0",
     "ws": "^8.16.0",
     "zod": "^3.22.4"
