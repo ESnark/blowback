@@ -2,7 +2,7 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { randomUUID } from 'crypto';
 import fs from 'fs/promises';
 import path from 'path';
-import puppeteer from 'puppeteer';
+import { chromium, Browser, Page, Request, ConsoleMessage } from 'playwright';
 import { z } from 'zod';
 import { HMREvent } from '../types/hmr.js';
 import { Logger } from '../utils/logger.js';
@@ -11,7 +11,7 @@ import { LogManager } from './log-manager.js';
 // Return type definition
 type BrowserStatus = {
   isStarted: true;
-  page: puppeteer.Page;
+  page: Page;
 } | {
   isStarted: false;
   error: {
@@ -22,8 +22,8 @@ type BrowserStatus = {
 
 export function registerBrowserTools(
   server: McpServer,
-  browserRef: { current: puppeteer.Browser | null },
-  pageRef: { current: puppeteer.Page | null },
+  browserRef: { current: Browser | null },
+  pageRef: { current: Page | null },
   lastHMREvents: HMREvent[]
 ) {
   // Get log manager instance
@@ -75,7 +75,7 @@ export function registerBrowserTools(
   };
 
   // Utility function: Get current checkpoint ID
-  const getCurrentCheckpointId = async (page: puppeteer.Page) => {
+  const getCurrentCheckpointId = async (page: Page) => {
     const checkpointId = await page.evaluate(() => {
       const metaTag = document.querySelector('meta[name="__mcp_checkpoint"]');
       return metaTag ? metaTag.getAttribute('data-id') : null;
@@ -99,20 +99,21 @@ export function registerBrowserTools(
         }
 
         Logger.info(`Starting browser and navigating to ${viteServerUrl}`);
-        browserRef.current = await puppeteer.launch({
-          headless,
-          args: ['--no-sandbox', '--disable-setuid-sandbox']
+        browserRef.current = await chromium.launch({
+          headless
         });
 
-        pageRef.current = await browserRef.current.newPage();
-        await pageRef.current.setViewport({ width: 1280, height: 800 });
+        const context = await browserRef.current.newContext({
+          viewport: { width: 1280, height: 800 }
+        });
+        pageRef.current = await context.newPage();
 
         // Create CDP session and enable network monitoring
-        const cdpClient = await pageRef.current.createCDPSession();
+        const cdpClient = await context.newCDPSession(pageRef.current);
         await cdpClient.send('Network.enable');
 
         // Set up WebSocket event listener
-        cdpClient.on('Network.webSocketCreated', params => {
+        cdpClient.on('Network.webSocketCreated', (params: any) => {
           Logger.info(`WebSocket created: ${params.url}`);
 
           // Detect HMR-related WebSocket connections (URLs containing localhost, token, or hmr)
@@ -122,7 +123,7 @@ export function registerBrowserTools(
         });
 
         // Detect WebSocket message reception
-        cdpClient.on('Network.webSocketFrameReceived', params => {
+        cdpClient.on('Network.webSocketFrameReceived', (params: any) => {
           try {
             const data = JSON.parse(params.response.payloadData);
             Logger.debug(`WebSocket message received: ${JSON.stringify(data)}`);
@@ -149,7 +150,7 @@ export function registerBrowserTools(
         });
 
         // Console message handler
-        pageRef.current.on('console', async msg => {
+        pageRef.current.on('console', async (msg: ConsoleMessage) => {
           Logger.info('Browser console', msg);
           const messageText = msg.text();
           const messageType = msg.type();
@@ -175,7 +176,7 @@ export function registerBrowserTools(
         });
 
         // Page error handler
-        pageRef.current.on('pageerror', async err => {
+        pageRef.current.on('pageerror', async (err: Error) => {
           await appendLogToFile('error', err.message);
           Logger.error(`Browser page error: ${err}`);
           lastHMREvents.unshift({
@@ -191,7 +192,7 @@ export function registerBrowserTools(
         });
 
         // Set up page navigation event listener
-        pageRef.current.on('framenavigated', async frame => {
+        pageRef.current.on('framenavigated', async (frame: any) => {
           if (frame === pageRef.current?.mainFrame()) {
             const url = frame.url();
             await appendLogToFile('navigation', `frame navigated: ${url}`);
@@ -199,7 +200,7 @@ export function registerBrowserTools(
         });
 
         // Navigate to Vite development server
-        await pageRef.current.goto(viteServerUrl, { waitUntil: 'networkidle0' });
+        await pageRef.current.goto(viteServerUrl, { waitUntil: 'networkidle' });
 
         return {
           content: [
@@ -250,7 +251,7 @@ If the image is successfully saved, you should request the user to provide the i
         // If URL is provided and different from current URL, navigate to it
         if (url && url !== currentUrl) {
           Logger.info(`Navigating to ${url} before capturing screenshot`);
-          await browserStatus.page.goto(url, { waitUntil: 'networkidle0' });
+          await browserStatus.page.goto(url, { waitUntil: 'networkidle' });
         }
 
         // Get current checkpoint ID
@@ -260,8 +261,8 @@ If the image is successfully saved, you should request the user to provide the i
 
         if (selector) {
           // Wait for element to appear
-          await browserStatus.page.waitForSelector(selector, { visible: true, timeout: 5000 });
-          const element = await browserStatus.page.$(selector);
+          await browserStatus.page.waitForSelector(selector, { state: 'visible', timeout: 5000 });
+          const element = await browserStatus.page.locator(selector).first();
 
           if (!element) {
             return {
@@ -275,12 +276,10 @@ If the image is successfully saved, you should request the user to provide the i
             };
           }
 
-          const elementScreenshot = await element.screenshot({ encoding: 'binary' });
-          screenshot = elementScreenshot as Buffer;
+          screenshot = await element.screenshot();
         } else {
           // Capture full page
-          const pageScreenshot = await browserStatus.page.screenshot({ encoding: 'binary', fullPage: true });
-          screenshot = pageScreenshot as Buffer;
+          screenshot = await browserStatus.page.screenshot({ fullPage: true });
         }
 
         // Get final URL (may be different after navigation)
@@ -366,19 +365,19 @@ If the image is successfully saved, you should request the user to provide the i
         const checkpointId = await getCurrentCheckpointId(browserStatus.page);
 
         // Check if element exists
-        await browserStatus.page.waitForSelector(selector, { visible: true, timeout: 5000 });
+        await browserStatus.page.waitForSelector(selector, { state: 'visible', timeout: 5000 });
 
         // Retrieve element properties
-        const elementProperties = await browserStatus.page.evaluate((selector, propertiesToGet) => {
+        const elementProperties = await browserStatus.page.evaluate(({ selector, propertiesToGet }: { selector: string; propertiesToGet: string[] }) => {
           const element = document.querySelector(selector);
           if (!element) return null;
 
           const result: Record<string, any> = {};
-          propertiesToGet.forEach(prop => {
+          propertiesToGet.forEach((prop: any) => {
             result[prop] = (element as any)[prop];
           });
           return result;
-        }, selector, properties);
+        }, { selector, propertiesToGet: properties });
 
         if (!elementProperties) {
           return {
@@ -443,19 +442,19 @@ If the image is successfully saved, you should request the user to provide the i
         const checkpointId = await getCurrentCheckpointId(browserStatus.page);
 
         // Retrieve element styles
-        const styles = await browserStatus.page.evaluate((selector, stylePropsToGet) => {
+        const styles = await browserStatus.page.evaluate(({ selector, stylePropsToGet }: { selector: string; stylePropsToGet: string[] }) => {
           const element = document.querySelector(selector);
           if (!element) return null;
 
           const computedStyle = window.getComputedStyle(element);
           const result: Record<string, string> = {};
 
-          stylePropsToGet.forEach(prop => {
+          stylePropsToGet.forEach((prop: any) => {
             result[prop] = computedStyle.getPropertyValue(prop);
           });
 
           return result;
-        }, selector, styleProperties);
+        }, { selector, stylePropsToGet: styleProperties });
 
         if (!styles) {
           return {
@@ -519,7 +518,7 @@ If the image is successfully saved, you should request the user to provide the i
         const checkpointId = await getCurrentCheckpointId(browserStatus.page);
 
         // Retrieve element dimensions and position information
-        const dimensions = await browserStatus.page.evaluate((selector) => {
+        const dimensions = await browserStatus.page.evaluate((selector: any) => {
           const element = document.querySelector(selector);
           if (!element) return null;
 
@@ -605,9 +604,7 @@ If the image is successfully saved, you should request the user to provide the i
         const pattern = urlPattern ? new RegExp(urlPattern) : null;
 
         // Start network request monitoring
-        await browserStatus.page.setRequestInterception(true);
-
-        const requestHandler = (request: puppeteer.HTTPRequest) => {
+        const requestHandler = (request: Request) => {
           const url = request.url();
           if (!pattern || pattern.test(url)) {
             requests.push({
@@ -617,7 +614,6 @@ If the image is successfully saved, you should request the user to provide the i
               timestamp: Date.now()
             });
           }
-          request.continue();
         };
 
         browserStatus.page.on('request', requestHandler);
@@ -627,7 +623,6 @@ If the image is successfully saved, you should request the user to provide the i
 
         // Stop monitoring
         browserStatus.page.off('request', requestHandler);
-        await browserStatus.page.setRequestInterception(false);
 
         return {
           content: [
@@ -672,15 +667,15 @@ If the image is successfully saved, you should request the user to provide the i
         }
 
         // Check if element exists
-        await browserStatus.page.waitForSelector(selector, { visible: true, timeout: 5000 });
+        await browserStatus.page.waitForSelector(selector, { state: 'visible', timeout: 5000 });
 
         // Get element's HTML content
-        const htmlContent = await browserStatus.page.evaluate((selector, includeOuter) => {
+        const htmlContent = await browserStatus.page.evaluate(({ selector, includeOuter }: { selector: string; includeOuter: boolean }) => {
           const element = document.querySelector(selector);
           if (!element) return null;
 
           return includeOuter ? element.outerHTML : element.innerHTML;
-        }, selector, includeOuter);
+        }, { selector, includeOuter });
 
         if (htmlContent === null) {
           return {
@@ -970,30 +965,30 @@ Examples are available in the schema definition.`,
 
         // Define command handler type
         type CommandArgs = Record<string, any>;
-        type CommandHandler = (page: puppeteer.Page, selector: string | undefined, args: CommandArgs) => Promise<string | Record<string, any>>;
+        type CommandHandler = (page: Page, selector: string | undefined, args: CommandArgs) => Promise<string | Record<string, any>>;
 
         // Command handler mapping
         const commandHandlers: Record<string, CommandHandler> = {
-          click: async (page: puppeteer.Page, selector: string | undefined, args: CommandArgs = {}) => {
+          click: async (page: Page, selector: string | undefined, args: CommandArgs = {}) => {
             if (!selector) throw new Error('Selector is required for click command');
             await page.waitForSelector(selector, {
-              visible: true,
+              state: 'visible',
               timeout: args.timeout as number || 5000
             });
             await page.click(selector, {
-              button: (args.button as puppeteer.MouseButton) || 'left',
+              button: (args.button as ('left' | 'right' | 'middle')) || 'left',
               clickCount: args.clickCount as number || 1,
               delay: args.delay as number || 0
             });
             return `Clicked on ${selector}`;
           },
 
-          type: async (page: puppeteer.Page, selector: string | undefined, args: CommandArgs = {}) => {
+          type: async (page: Page, selector: string | undefined, args: CommandArgs = {}) => {
             if (!selector) throw new Error('Selector is required for type command');
             if (!args.text) throw new Error('Text is required for type command');
 
             await page.waitForSelector(selector, {
-              visible: true,
+              state: 'visible',
               timeout: args.timeout as number || 5000
             });
 
@@ -1013,10 +1008,10 @@ Examples are available in the schema definition.`,
             return `Typed "${args.text}" into ${selector}`;
           },
 
-          wait: async (page: puppeteer.Page, selector: string | undefined, args: CommandArgs = {}) => {
+          wait: async (page: Page, selector: string | undefined, args: CommandArgs = {}) => {
             if (selector) {
               await page.waitForSelector(selector, {
-                visible: args.visible !== false,
+                state: args.visible !== false ? 'visible' : 'attached',
                 timeout: args.timeout as number || 5000
               });
               return `Waited for element ${selector}`;
@@ -1035,56 +1030,55 @@ Examples are available in the schema definition.`,
             }
           },
 
-          navigate: async (page: puppeteer.Page, selector: string | undefined, args: CommandArgs = {}) => {
+          navigate: async (page: Page, selector: string | undefined, args: CommandArgs = {}) => {
             if (!args.url) throw new Error('URL is required for navigate command');
 
             await page.goto(args.url as string, {
-              waitUntil: args.waitUntil as puppeteer.WaitForOptions['waitUntil'] || 'networkidle0',
+              waitUntil: args.waitUntil as ('load' | 'domcontentloaded' | 'networkidle' | 'commit') || 'networkidle0',
               timeout: args.timeout as number || 30000
             });
 
             return `Navigated to ${args.url}`;
           },
 
-          select: async (page: puppeteer.Page, selector: string | undefined, args: CommandArgs = {}) => {
+          select: async (page: Page, selector: string | undefined, args: CommandArgs = {}) => {
             if (!selector) throw new Error('Selector is required for select command');
             if (!args.value) throw new Error('Value is required for select command');
 
             await page.waitForSelector(selector, {
-              visible: true,
+              state: 'visible',
               timeout: args.timeout as number || 5000
             });
 
-            await page.select(selector, args.value as string);
+            await page.selectOption(selector, args.value as string);
 
             return `Selected value "${args.value}" in ${selector}`;
           },
 
-          check: async (page: puppeteer.Page, selector: string | undefined, args: CommandArgs = {}) => {
+          check: async (page: Page, selector: string | undefined, args: CommandArgs = {}) => {
             if (!selector) throw new Error('Selector is required for check command');
 
             await page.waitForSelector(selector, {
-              visible: true,
+              state: 'visible',
               timeout: args.timeout as number || 5000
             });
 
             const checked = args.checked !== false;
 
-            await page.evaluate((sel, check) => {
-              const element = document.querySelector(sel);
-              if (element && 'type' in element && (element as HTMLInputElement).type === 'checkbox') {
-                (element as HTMLInputElement).checked = check;
-              }
-            }, selector, checked);
+            if (checked) {
+              await page.check(selector);
+            } else {
+              await page.uncheck(selector);
+            }
 
             return `${checked ? 'Checked' : 'Unchecked'} checkbox ${selector}`;
           },
 
-          hover: async (page: puppeteer.Page, selector: string | undefined, args: CommandArgs = {}) => {
+          hover: async (page: Page, selector: string | undefined, args: CommandArgs = {}) => {
             if (!selector) throw new Error('Selector is required for hover command');
 
             await page.waitForSelector(selector, {
-              visible: true,
+              state: 'visible',
               timeout: args.timeout as number || 5000
             });
 
@@ -1093,11 +1087,11 @@ Examples are available in the schema definition.`,
             return `Hovered over ${selector}`;
           },
 
-          focus: async (page: puppeteer.Page, selector: string | undefined, args: CommandArgs = {}) => {
+          focus: async (page: Page, selector: string | undefined, args: CommandArgs = {}) => {
             if (!selector) throw new Error('Selector is required for focus command');
 
             await page.waitForSelector(selector, {
-              visible: true,
+              state: 'visible',
               timeout: args.timeout as number || 5000
             });
 
@@ -1106,7 +1100,7 @@ Examples are available in the schema definition.`,
             return `Focused on ${selector}`;
           },
 
-          blur: async (page: puppeteer.Page, selector: string | undefined, args: CommandArgs = {}) => {
+          blur: async (page: Page, selector: string | undefined, args: CommandArgs = {}) => {
             if (!selector) throw new Error('Selector is required for blur command');
 
             await page.evaluate((sel) => {
@@ -1119,62 +1113,62 @@ Examples are available in the schema definition.`,
             return `Removed focus from ${selector}`;
           },
 
-          keypress: async (page: puppeteer.Page, selector: string | undefined, args: CommandArgs = {}) => {
+          keypress: async (page: Page, selector: string | undefined, args: CommandArgs = {}) => {
             if (!args.key) throw new Error('Key is required for keypress command');
 
             if (selector) {
               await page.waitForSelector(selector, {
-                visible: true,
+                state: 'visible',
                 timeout: args.timeout as number || 5000
               });
               await page.focus(selector as string);
             }
 
-            await page.keyboard.press(args.key as puppeteer.KeyInput);
+            await page.keyboard.press(args.key as string);
 
             return `Pressed key ${args.key}${selector ? ` on ${selector}` : ''}`;
           },
 
-          scroll: async (page: puppeteer.Page, selector: string | undefined, args: CommandArgs = {}) => {
+          scroll: async (page: Page, selector: string | undefined, args: CommandArgs = {}) => {
             const x = args.x as number || 0;
             const y = args.y as number || 0;
 
             if (selector) {
               await page.waitForSelector(selector, {
-                visible: true,
+                state: 'visible',
                 timeout: args.timeout as number || 5000
               });
 
-              await page.evaluate((sel, xPos, yPos) => {
+              await page.evaluate(({ sel, xPos, yPos }: { sel: string; xPos: number; yPos: number }) => {
                 const element = document.querySelector(sel);
                 if (element) {
                   element.scrollBy(xPos, yPos);
                 }
-              }, selector, x, y);
+              }, { sel: selector, xPos: x, yPos: y });
 
               return `Scrolled element ${selector} by (${x}, ${y})`;
             } else {
-              await page.evaluate((xPos, yPos) => {
+              await page.evaluate(({ xPos, yPos }: { xPos: number; yPos: number }) => {
                 window.scrollBy(xPos, yPos);
-              }, x, y);
+              }, { xPos: x, yPos: y });
 
               return `Scrolled window by (${x}, ${y})`;
             }
           },
 
-          getAttribute: async (page: puppeteer.Page, selector: string | undefined, args: CommandArgs = {}) => {
+          getAttribute: async (page: Page, selector: string | undefined, args: CommandArgs = {}) => {
             if (!selector) throw new Error('Selector is required for getAttribute command');
             if (!args.name) throw new Error('Attribute name is required for getAttribute command');
 
             await page.waitForSelector(selector, {
-              visible: args.visible !== false,
+              state: args.visible !== false ? 'visible' : 'attached',
               timeout: args.timeout as number || 5000
             });
 
-            const attributeValue = await page.evaluate((sel, attr) => {
+            const attributeValue = await page.evaluate(({ sel, attr }: { sel: string; attr: string }) => {
               const element = document.querySelector(sel);
               return element ? element.getAttribute(attr) : null;
-            }, selector, args.name);
+            }, { sel: selector, attr: args.name as string });
 
             return {
               selector,
@@ -1183,19 +1177,19 @@ Examples are available in the schema definition.`,
             };
           },
 
-          getProperty: async (page: puppeteer.Page, selector: string | undefined, args: CommandArgs = {}) => {
+          getProperty: async (page: Page, selector: string | undefined, args: CommandArgs = {}) => {
             if (!selector) throw new Error('Selector is required for getProperty command');
             if (!args.name) throw new Error('Property name is required for getProperty command');
 
             await page.waitForSelector(selector, {
-              visible: args.visible !== false,
+              state: args.visible !== false ? 'visible' : 'attached',
               timeout: args.timeout as number || 5000
             });
 
-            const propertyValue = await page.evaluate((sel, prop) => {
+            const propertyValue = await page.evaluate(({ sel, prop }: { sel: string; prop: string }) => {
               const element = document.querySelector(sel);
               return element ? (element as any)[prop] : null;
-            }, selector, args.name);
+            }, { sel: selector, prop: args.name as string });
 
             return {
               selector,
@@ -1204,16 +1198,16 @@ Examples are available in the schema definition.`,
             };
           },
 
-          refresh: async (page: puppeteer.Page, selector: string | undefined, args: CommandArgs = {}) => {
+          refresh: async (page: Page, selector: string | undefined, args: CommandArgs = {}) => {
             await page.reload({
-              waitUntil: args.waitUntil as puppeteer.WaitForOptions['waitUntil'] || 'networkidle0',
+              waitUntil: args.waitUntil as ('load' | 'domcontentloaded' | 'networkidle' | 'commit') || 'networkidle0',
               timeout: args.timeout as number || 30000
             });
 
             return 'Refreshed current page';
           },
 
-          drag: async (page: puppeteer.Page, selector: string | undefined, args: CommandArgs = {}) => {
+          drag: async (page: Page, selector: string | undefined, args: CommandArgs = {}) => {
             // Validate required arguments
             const { sourceX, sourceY, offsetX, offsetY } = args;
             if (sourceX === undefined || sourceY === undefined) {

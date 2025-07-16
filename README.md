@@ -87,7 +87,7 @@ Note: Like other resources, this is not directly supported by Cursor at the mome
 
 1. **MCP Server**: A central module based on the Model Context Protocol SDK that provides tools to MCP Client.
 
-2. **Browser Automation**: Controls Chrome using Puppeteer to visually inspect changes.
+2. **Browser Automation**: Controls Chrome using Playwright to visually inspect changes.
 
 3. **Checkpoint System**: Maintains snapshots of browser states for comparison and testing.
 
@@ -106,7 +106,7 @@ The server maintains several important data stores:
    - Development Server updates the browser or emits HMR events automatically
 
 2. **Web Browser → MCP Server**:
-   - HMR events and console logs are captured through Puppeteer.
+   - HMR events and console logs are captured through Playwright.
    - MCP Server queries the current state of the browser or captures a screenshot
 
 3. **MCP Server → MCP Client**:
