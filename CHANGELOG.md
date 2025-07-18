@@ -1,4 +1,4 @@
-# vite-mcp-server
+# Blowback MCP
 
 ## 0.4.0
 

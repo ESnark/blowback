@@ -2,7 +2,7 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { randomUUID } from 'crypto';
 import fs from 'fs/promises';
 import path from 'path';
-import { chromium, Browser, Page, Request, ConsoleMessage } from 'playwright';
+import { Browser, chromium, ConsoleMessage, Page, Request } from 'playwright';
 import { z } from 'zod';
 import { HMREvent } from '../types/hmr.js';
 import { Logger } from '../utils/logger.js';
@@ -86,9 +86,9 @@ export function registerBrowserTools(
   // Browser start tool
   server.tool(
     'start-browser',
-    'Launches a browser instance and navigates to the Vite dev server',
+    'Launches a browser instance and navigates to the dev server',
     {
-      viteServerUrl: z.string().optional().describe('URL of the Vite dev server (default: http://localhost:5173)'),
+      viteServerUrl: z.string().optional().describe('URL of the dev server (default: http://localhost:5173)'),
       headless: z.boolean().optional().describe('Run browser in headless mode')
     },
     async ({ viteServerUrl = 'http://localhost:5173', headless = false }) => {
