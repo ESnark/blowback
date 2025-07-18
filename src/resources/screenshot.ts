@@ -2,7 +2,7 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { randomUUID } from 'crypto';
 import fs from 'fs/promises';
 import path from 'path';
-import puppeteer from 'puppeteer';
+import { Browser, Page } from 'playwright';
 import { SCREENSHOTS_DIRECTORY } from '../constants.js';
 import { Logger } from '../utils/logger.js';
 
@@ -51,8 +51,8 @@ const urlPathCacheIdToScreenshotId: Map<string, string> = new Map();
  */
 export function registerScreenshotResource(
   server: McpServer,
-  browserRef: { current: puppeteer.Browser | null },
-  pageRef: { current: puppeteer.Page | null },
+  browserRef: { current: Browser | null },
+  pageRef: { current: Page | null },
 ) {
   // Function to check if browser is started
   const isBrowserStarted = () => {
@@ -172,12 +172,11 @@ export function registerScreenshotResource(
       // URL이 다르면 이동
       if (cleanTargetUrl !== currentUrl) {
         Logger.info(`Navigating to ${cleanTargetUrl} before capturing screenshot`);
-        await pageRef.current.goto(cleanTargetUrl, { waitUntil: 'networkidle0' });
+        await pageRef.current.goto(cleanTargetUrl, { waitUntil: 'networkidle' });
       }
 
       // 스크린샷 캡처
-      const pageScreenshot = await pageRef.current.screenshot({ encoding: 'binary', fullPage: true });
-      const imageData = pageScreenshot as Buffer;
+      const imageData = await pageRef.current.screenshot({ fullPage: true });
 
       // 랜덤 ID 생성
       const id = randomUUID();

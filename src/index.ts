@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
-import puppeteer from 'puppeteer';
+import { Browser, Page } from 'playwright';
 import { z } from 'zod';
 import { registerScreenshotResource } from './resources/screenshot.js';
 import { registerBrowserTools } from './tools/browser-tools.js';
@@ -16,8 +16,8 @@ async function main() {
   try {
     // Reference objects for state management
     // Using object references so values can be updated from other modules
-    const browserRef = { current: null as puppeteer.Browser | null };
-    const pageRef = { current: null as puppeteer.Page | null };
+    const browserRef = { current: null as Browser | null };
+    const pageRef = { current: null as Page | null };
 
     // Array to store recent HMR events
     const lastHMREvents: HMREvent[] = [];
