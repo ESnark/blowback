@@ -8,6 +8,7 @@ import { registerBrowserTools } from './tools/browser-tools.js';
 import { registerHMRTools } from './tools/hmr-tools.js';
 import { HMREvent } from './types/hmr.js';
 import { Logger } from './utils/logger.js';
+import { closeScreenshotDB } from './db/screenshot-db.js';
 
 /**
  * Initializes the server, registers tools, and starts communication with clients using stdio transport
@@ -74,13 +75,14 @@ If your development environment does not support HMR, you cannot read HMR events
 
     // Register tools and resources
     registerHMRTools(server, lastHMREvents);
+    const screenshotHelpers = registerScreenshotResource(server, browserRef, pageRef);
     registerBrowserTools(
       server,
       browserRef,
       pageRef,
-      lastHMREvents
+      lastHMREvents,
+      screenshotHelpers
     );
-    registerScreenshotResource(server, browserRef, pageRef);
 
     // Set up stdio transport and connect
     const transport = new StdioServerTransport();
@@ -94,6 +96,8 @@ If your development environment does not support HMR, you cannot read HMR events
           Logger.error('Error closing browser:', error);
         });
       }
+      // Close database connection
+      closeScreenshotDB();
     });
   } catch (error) {
     Logger.error('Fatal error in main():', error);
