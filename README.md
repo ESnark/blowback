@@ -111,11 +111,11 @@ Images corresponding to reference IDs are managed in the `{PROJECT_ROOT}/.mcp_sc
 
 A resource for querying specific screenshots based on URL path.
 
+> **Note**: tarting from version 1.0, Blob responses through resources are disabled by default, and file reference information is returned instead
+
 - URI template: `screenshot://{+path}`
 - Example: `screenshot://localhost:5173/about`
 - Use URL paths without protocol (http://, https://)
-
-> **Note**: From version 1.0, resource-based image retrieval is supported
 
 ## Data Storage Structure
 
