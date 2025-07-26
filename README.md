@@ -6,6 +6,10 @@
 
 Adds a Model Context Protocol (MCP) server to the FE development server to support integration with Cursor.
 
+<a href="https://glama.ai/mcp/servers/@ESnark/blowback">
+  <img width="380" height="200" src="https://glama.ai/mcp/servers/@ESnark/blowback/badge" alt="Vite Server MCP server" />
+</a>
+
 ## Key Features
 
 - Integration of FE development server with MCP server
