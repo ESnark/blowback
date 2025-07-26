@@ -1,5 +1,21 @@
 # Blowback MCP
 
+## 1.0.0
+
+### Major Changes
+
+- 4f73613: - Add MCP prompt for AI guidance on checkpoints and screenshots
+
+  - Return screenshot metadata instead of base64 by default
+  - Add ENABLE_BASE64 env var to control image encoding
+  - Improve URL parsing and pathname normalization
+
+  BREAKING CHANGE: Screenshot resources now return metadata only. Use ENABLE_BASE64=true for base64 images
+
+### Minor Changes
+
+- 5c44b5a: Replace Puppeteer with Playwright
+
 ## 0.4.0
 
 ### Minor Changes
