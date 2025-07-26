@@ -58,10 +58,22 @@ export class ScreenshotDB {
   // Parse URL into components
   parseUrl(url: string): ParsedUrl {
     try {
-      const urlObj = new URL(url);
+      // Handle URLs that might not have a protocol
+      let urlToParse = url;
+      if (!url.startsWith('http://') && !url.startsWith('https://')) {
+        urlToParse = 'http://' + url;
+      }
+
+      const urlObj = new URL(urlToParse);
+      // Remove trailing slash from pathname for consistency
+      let pathname = urlObj.pathname;
+      if (pathname.endsWith('/') && pathname.length > 1) {
+        pathname = pathname.slice(0, -1);
+      }
+
       return {
         hostname: urlObj.hostname + (urlObj.port ? `:${urlObj.port}` : ''),
-        pathname: urlObj.pathname,
+        pathname,
         query: urlObj.search,
         hash: urlObj.hash
       };
@@ -88,6 +100,8 @@ export class ScreenshotDB {
 
   // Find latest screenshot by URL
   findLatestByUrl(hostname: string, pathname: string): ScreenshotRecord | null {
+    Logger.info(`[findLatestByUrl] Searching for hostname: '${hostname}', pathname: '${pathname}'`);
+
     const stmt = this.db.prepare(`
       SELECT * FROM screenshots
       WHERE hostname = ? AND pathname = ?
@@ -96,8 +110,12 @@ export class ScreenshotDB {
     `);
 
     const row = stmt.get(hostname, pathname) as ScreenshotRecord | null;
-    if (!row) return null;
+    if (!row) {
+      Logger.info('[findLatestByUrl] No match found');
+      return null;
+    }
 
+    Logger.info(`[findLatestByUrl] Found match with id: ${row.id}`);
     return {
       ...row,
       timestamp: new Date(row.timestamp)

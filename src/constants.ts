@@ -11,7 +11,7 @@ const getProjectRoot = (): string => {
     Logger.info(`Using PROJECT_ROOT from environment: ${resolvedPath}`);
     return resolvedPath;
   }
-  
+
   const cwd = process.cwd();
   Logger.info(`No PROJECT_ROOT environment variable, using current directory: ${cwd}`);
   return cwd;
@@ -42,13 +42,13 @@ const getLogDirectoryPath = (): { rootDir: string, logsDir: string } => {
 const getScreenshotsDirectory = (): string => {
   const projectRoot = getProjectRoot();
   const screenshotsDir = path.join(projectRoot, '.mcp_screenshot');
-  
+
   // Create directory if it doesn't exist
   if (!fs.existsSync(screenshotsDir)) {
     fs.mkdirSync(screenshotsDir, { recursive: true });
     Logger.info(`Created screenshots directory: ${screenshotsDir}`);
   }
-  
+
   return screenshotsDir;
 };
 

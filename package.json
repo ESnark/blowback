@@ -9,6 +9,7 @@
     "start": "node dist/index.js",
     "dev": "tsc -w",
     "prepare": "pnpm build",
+    "postinstall": "node -e \"try { require('child_process').execSync('npm rebuild better-sqlite3', {stdio: 'inherit'}) } catch(e) { console.warn('Warning: Failed to rebuild better-sqlite3:', e.message) }\"",
     "lint": "eslint \"src/**/*.{js,ts}\"",
     "lint:fix": "eslint \"src/**/*.{js,ts}\" --fix",
     "format": "eslint \"src/**/*.{js,ts}\" --fix && prettier --write \"src/**/*.{js,ts}\"",

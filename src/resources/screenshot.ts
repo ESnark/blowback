@@ -5,9 +5,10 @@ import fs from 'fs/promises';
 import path from 'path';
 import { Browser, Page } from 'playwright';
 import { z } from 'zod';
-import { SCREENSHOTS_DIRECTORY } from '../constants.js';
+import { ENABLE_BASE64, SCREENSHOTS_DIRECTORY } from '../constants.js';
 import { getScreenshotDB } from '../db/screenshot-db.js';
 import { Logger } from '../utils/logger.js';
+
 
 // Helper function to get file path from ID
 const getFilePath = (id: string): string => {
@@ -91,10 +92,14 @@ export function registerScreenshotResource(
     const screenshots = db.findAll();
     return {
       contents: screenshots.map(screenshot => ({
-        uri: getScreenshotUri(screenshot.id),
+        uri: `screenshot://${screenshot.hostname}${screenshot.pathname}`,
         mimeType: screenshot.mime_type,
-        text: `Screenshot ${screenshot.id} - ${screenshot.description}`
-      }))
+        text: `Screenshot of ${screenshot.hostname}${screenshot.pathname} - ${screenshot.description}`,
+        id: screenshot.id,
+        path: getFilePath(screenshot.id),
+        checkpoint_id: screenshot.checkpoint_id,
+        timestamp: screenshot.timestamp.toISOString()
+      } as any))
     };
   };
 
@@ -106,16 +111,24 @@ export function registerScreenshotResource(
     }
 
     const filePath = getFilePath(screenshot.id);
-    const imageBuffer = await fs.readFile(filePath);
+
+    const content: any = {
+      uri: getScreenshotUri(screenshot.id),
+      mimeType: screenshot.mime_type,
+      id: screenshot.id,
+      checkpoint_id: screenshot.checkpoint_id,
+      timestamp: screenshot.timestamp.toISOString()
+    };
+
+    if (ENABLE_BASE64) {
+      const imageBuffer = await fs.readFile(filePath);
+      content.blob = imageBuffer.toString('base64');
+    } else {
+      content.text = `Screenshot ${screenshot.id}`;
+    }
 
     return {
-      contents: [
-        {
-          uri: getScreenshotUri(screenshot.id),
-          mimeType: screenshot.mime_type,
-          blob: imageBuffer.toString('base64')
-        }
-      ]
+      contents: [content]
     };
   };
 
@@ -148,35 +161,78 @@ export function registerScreenshotResource(
       }
 
       // Parse URL with validated path
-      const r = new URL('http://' + validatedPath);
-      const host = r.host;
-      const pathname = r.pathname;
+      let host: string;
+      let pathname: string;
 
-      Logger.info(`uri: ${uri}`);
-      Logger.info(`path: ${variables.path}`);
-      Logger.info(`host: ${host}`);
-      Logger.info(`pathname: ${pathname}`);
+      // Check if the path contains a pathname or just hostname
+      if (validatedPath.includes('/')) {
+        const r = new URL('http://' + validatedPath);
+        host = r.host;
+        pathname = r.pathname;
+      } else {
+        // Just hostname, no pathname
+        host = validatedPath;
+        pathname = '/';
+      }
+
+      // Remove trailing slash from pathname for consistency (except for root)
+      if (pathname.endsWith('/') && pathname.length > 1) {
+        pathname = pathname.slice(0, -1);
+      }
+
+      Logger.info('[screenshot-by-url] Request received:');
+      Logger.info(`  - Original URI: ${uri}`);
+      Logger.info(`  - Path variable: ${variables.path}`);
+      Logger.info(`  - Parsed host: ${host}`);
+      Logger.info(`  - Parsed pathname: ${pathname}`);
 
       // Check if screenshot exists in database
       const existing = db.findLatestByUrl(host, pathname);
 
       if (!existing) {
-        Logger.info(`No screenshot found for ${host}${pathname}`);
+        Logger.info(`[screenshot-by-url] No screenshot found for hostname: '${host}', pathname: '${pathname}'`);
+
+        // Log all available screenshots for debugging
+        const allScreenshots = db.findAll();
+        Logger.info(`[screenshot-by-url] Available screenshots in DB (${allScreenshots.length} total):`);
+        allScreenshots.forEach((s, i) => {
+          Logger.info(`  ${i + 1}. hostname: '${s.hostname}', pathname: '${s.pathname}', id: ${s.id}`);
+        });
+
+        // Try to find similar entries
+        const similarScreenshots = allScreenshots.filter(s =>
+          s.hostname.includes(host.split(':')[0]) || host.includes(s.hostname.split(':')[0])
+        );
+        if (similarScreenshots.length > 0) {
+          Logger.info('[screenshot-by-url] Found similar screenshots:');
+          similarScreenshots.forEach((s, i) => {
+            Logger.info(`  ${i + 1}. hostname: '${s.hostname}', pathname: '${s.pathname}'`);
+          });
+        }
+
         throw new McpError(ErrorCode.InvalidRequest, `No screenshot found for ${host}${pathname}`);
       }
 
       // Return existing screenshot
       const filePath = getFilePath(existing.id);
-      const imageBuffer = await fs.readFile(filePath);
+
+      const content: any = {
+        id: existing.id,
+        uri: `screenshot://${host}${pathname}`,
+        mimeType: existing.mime_type,
+        checkpoint_id: existing.checkpoint_id,
+        timestamp: existing.timestamp.toISOString()
+      };
+
+      if (ENABLE_BASE64) {
+        const imageBuffer = await fs.readFile(filePath);
+        content.blob = imageBuffer.toString('base64');
+      } else {
+        content.text = `Screenshot of ${host}${pathname} - ${existing.description}`;
+      }
 
       return {
-        contents: [
-          {
-            uri: `screenshot://${host}${pathname}`,
-            mimeType: existing.mime_type,
-            blob: imageBuffer.toString('base64')
-          }
-        ]
+        contents: [content]
       };
     }
   );
@@ -231,6 +287,9 @@ export function registerScreenshotResource(
 
       if (url) {
         const parsed = db.parseUrl(url);
+        Logger.info(`[addScreenshot] Saving screenshot with URL: ${url}`);
+        Logger.info(`[addScreenshot] Parsed - hostname: ${parsed.hostname}, pathname: ${parsed.pathname}`);
+
         db.insert({
           id,
           hostname: parsed.hostname,
@@ -242,7 +301,7 @@ export function registerScreenshotResource(
           mime_type: 'image/png',
           description
         });
-        Logger.info(`Screenshot saved to database with ID: ${id} for URL: ${url}`);
+        Logger.info(`[addScreenshot] Screenshot saved to database with ID: ${id}`);
 
         // Return hostname/path based URI
         resourceUri = `screenshot://${parsed.hostname}${parsed.pathname}`;

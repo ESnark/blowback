@@ -3,12 +3,13 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { Browser, Page } from 'playwright';
 import { z } from 'zod';
+import { closeScreenshotDB } from './db/screenshot-db.js';
+import { registerPrompt } from './prompt/init.js';
 import { registerScreenshotResource } from './resources/screenshot.js';
 import { registerBrowserTools } from './tools/browser-tools.js';
 import { registerHMRTools } from './tools/hmr-tools.js';
 import { HMREvent } from './types/hmr.js';
 import { Logger } from './utils/logger.js';
-import { closeScreenshotDB } from './db/screenshot-db.js';
 
 /**
  * Initializes the server, registers tools, and starts communication with clients using stdio transport
@@ -33,6 +34,8 @@ async function main() {
         resources: {}
       }
     });
+
+    registerPrompt(server);
 
     server.tool('how-to-use', 'Description of how to use the server', {
       section: z.enum(['checkpoint', 'hmr']).describe('Section to describe'),

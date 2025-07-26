@@ -36,7 +36,7 @@ export interface HMRBrowserError {
 /**
  * Vite HMR event type (all possible HMR event types)
  */
-export type HMREvent = HMRUpdate | HMRError | HMRBrowserError | { type: string; [key: string]: any };
+export type HMREvent = HMRUpdate | HMRError | HMRBrowserError | { type: string; [key: string]: unknown };
 
 /**
  * Network request information interface

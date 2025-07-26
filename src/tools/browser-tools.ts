@@ -1,9 +1,9 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { Browser, chromium, ConsoleMessage, Page, Request } from 'playwright';
 import { z } from 'zod';
+import { ENABLE_BASE64 } from '../constants.js';
 import { HMREvent } from '../types/hmr.js';
 import { Logger } from '../utils/logger.js';
-import { ENABLE_BASE64 } from '../constants.js';
 import { LogManager } from './log-manager.js';
 
 // Return type definition
@@ -91,17 +91,17 @@ export function registerBrowserTools(
     'start-browser',
     'Launches a browser instance and navigates to the dev server',
     {
-      viteServerUrl: z.string().optional().describe('URL of the dev server (default: http://localhost:5173)'),
+      targetUrl: z.string().optional().describe('URL of the dev server (default: http://localhost:5173)'),
       headless: z.boolean().optional().describe('Run browser in headless mode')
     },
-    async ({ viteServerUrl = 'http://localhost:5173', headless = false }) => {
+    async ({ targetUrl = 'http://localhost:5173', headless = false }) => {
       try {
         if (browserRef.current) {
           await browserRef.current.close();
           Logger.info('Closed existing browser instance');
         }
 
-        Logger.info(`Starting browser and navigating to ${viteServerUrl}`);
+        Logger.info(`Starting browser and navigating to ${targetUrl}`);
         browserRef.current = await chromium.launch({
           headless
         });
@@ -203,13 +203,13 @@ export function registerBrowserTools(
         });
 
         // Navigate to Vite development server
-        await pageRef.current.goto(viteServerUrl, { waitUntil: 'networkidle' });
+        await pageRef.current.goto(targetUrl, { waitUntil: 'networkidle' });
 
         return {
           content: [
             {
               type: 'text',
-              text: `Successfully started browser and navigated to ${viteServerUrl}. HMR monitoring is active.`
+              text: `Successfully started browser and navigated to ${targetUrl}. HMR monitoring is active.`
             }
           ]
         };
@@ -237,7 +237,7 @@ Stores the screenshot in the MCP resource system and returns a resource URI.
 If ENABLE_BASE64 environment variable is set to 'true', also includes base64 encoded image in the response.`,
     {
       selector: z.string().optional().describe('CSS selector to capture (captures full page if not provided)'),
-      url: z.string().optional().describe('URL to navigate to before capturing screenshot')
+      url: z.string().optional().describe('URL to navigate to before capturing screenshot. Do not provide if you want to capture the current page.')
     },
     async ({ selector, url }) => {
       try {
@@ -301,15 +301,15 @@ If ENABLE_BASE64 environment variable is set to 'true', also includes base64 enc
         }
 
         // Add screenshot using the resource system
-        const description = selector 
+        const description = selector
           ? `Screenshot of element ${selector} at ${finalUrl}`
           : `Screenshot of full page at ${finalUrl}`;
-        
+
         const screenshotResult = await screenshotHelpers.addScreenshot(
           screenshot,
           description,
           checkpointId,
-          finalUrl
+          finalUrl.replace(/^http(s)?:\/\//, '')
         );
 
         Logger.info(`Screenshot saved with ID: ${screenshotResult.id}, URI: ${screenshotResult.resourceUri}`);
@@ -1232,7 +1232,7 @@ Examples are available in the schema definition.`,
             const sourceY = args.sourceY as number | undefined;
             const offsetX = args.offsetX as number | undefined;
             const offsetY = args.offsetY as number | undefined;
-            
+
             if (sourceX === undefined || sourceY === undefined) {
               throw new Error('sourceX and sourceY are required for drag command');
             }

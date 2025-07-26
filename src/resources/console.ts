@@ -11,6 +11,6 @@ type ConsoleMessage = {
 // Export console message store for external access
 export const consoleMessages: ConsoleMessage[] = [];
 
-export function registerConsoleResource(server: McpServer) {
+export function registerConsoleResource(_server: McpServer) {
   throw new Error('Not implemented');
 }
