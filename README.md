@@ -6,6 +6,10 @@
 
 A Model Context Protocol (MCP) server that integrates FE development servers with AI tools like Claude Desktop and Cursor.
 
+<a href="https://glama.ai/mcp/servers/@ESnark/blowback">
+  <img width="380" height="200" src="https://glama.ai/mcp/servers/@ESnark/blowback/badge" alt="Vite Server MCP server" />
+</a>
+
 ## Key Features
 
 - Integration of local development server with MCP server
