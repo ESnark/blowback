@@ -1,9 +1,7 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import { randomUUID } from 'crypto';
-import fs from 'fs/promises';
-import path from 'path';
 import { Browser, chromium, ConsoleMessage, Page, Request } from 'playwright';
 import { z } from 'zod';
+import { ENABLE_BASE64 } from '../constants.js';
 import { HMREvent } from '../types/hmr.js';
 import { Logger } from '../utils/logger.js';
 import { LogManager } from './log-manager.js';
@@ -24,7 +22,12 @@ export function registerBrowserTools(
   server: McpServer,
   browserRef: { current: Browser | null },
   pageRef: { current: Page | null },
-  lastHMREvents: HMREvent[]
+  lastHMREvents: HMREvent[],
+  screenshotHelpers?: {
+    addScreenshot: (imageData: string | Buffer, description: string, checkpointId: string | null, url?: string) => Promise<{ id: string; resourceUri: string }>;
+    getScreenshotByPath: (url: string) => unknown;
+    getScreenshotUriFromPath: (path: string, withCacheId?: boolean) => string | null;
+  }
 ) {
   // Get log manager instance
   const logManager = LogManager.getInstance();
@@ -88,17 +91,17 @@ export function registerBrowserTools(
     'start-browser',
     'Launches a browser instance and navigates to the dev server',
     {
-      viteServerUrl: z.string().optional().describe('URL of the dev server (default: http://localhost:5173)'),
+      targetUrl: z.string().optional().describe('URL of the dev server (default: http://localhost:5173)'),
       headless: z.boolean().optional().describe('Run browser in headless mode')
     },
-    async ({ viteServerUrl = 'http://localhost:5173', headless = false }) => {
+    async ({ targetUrl = 'http://localhost:5173', headless = false }) => {
       try {
         if (browserRef.current) {
           await browserRef.current.close();
           Logger.info('Closed existing browser instance');
         }
 
-        Logger.info(`Starting browser and navigating to ${viteServerUrl}`);
+        Logger.info(`Starting browser and navigating to ${targetUrl}`);
         browserRef.current = await chromium.launch({
           headless
         });
@@ -113,7 +116,7 @@ export function registerBrowserTools(
         await cdpClient.send('Network.enable');
 
         // Set up WebSocket event listener
-        cdpClient.on('Network.webSocketCreated', (params: any) => {
+        cdpClient.on('Network.webSocketCreated', (params: { url: string; requestId: string }) => {
           Logger.info(`WebSocket created: ${params.url}`);
 
           // Detect HMR-related WebSocket connections (URLs containing localhost, token, or hmr)
@@ -123,7 +126,7 @@ export function registerBrowserTools(
         });
 
         // Detect WebSocket message reception
-        cdpClient.on('Network.webSocketFrameReceived', (params: any) => {
+        cdpClient.on('Network.webSocketFrameReceived', (params: { requestId: string; timestamp: number; response: { opcode: number; mask: boolean; payloadData: string } }) => {
           try {
             const data = JSON.parse(params.response.payloadData);
             Logger.debug(`WebSocket message received: ${JSON.stringify(data)}`);
@@ -192,7 +195,7 @@ export function registerBrowserTools(
         });
 
         // Set up page navigation event listener
-        pageRef.current.on('framenavigated', async (frame: any) => {
+        pageRef.current.on('framenavigated', async (frame: { url: () => string }) => {
           if (frame === pageRef.current?.mainFrame()) {
             const url = frame.url();
             await appendLogToFile('navigation', `frame navigated: ${url}`);
@@ -200,13 +203,13 @@ export function registerBrowserTools(
         });
 
         // Navigate to Vite development server
-        await pageRef.current.goto(viteServerUrl, { waitUntil: 'networkidle' });
+        await pageRef.current.goto(targetUrl, { waitUntil: 'networkidle' });
 
         return {
           content: [
             {
               type: 'text',
-              text: `Successfully started browser and navigated to ${viteServerUrl}. HMR monitoring is active.`
+              text: `Successfully started browser and navigated to ${targetUrl}. HMR monitoring is active.`
             }
           ]
         };
@@ -230,14 +233,13 @@ export function registerBrowserTools(
   server.tool(
     'capture-screenshot',
     `Captures a screenshot of the current page or a specific element.
-This feature is for MCP Clients that do not support MCP Resource and image content type.
-If the image is successfully saved, you should request the user to provide the image.`,
+Stores the screenshot in the MCP resource system and returns a resource URI.
+If ENABLE_BASE64 environment variable is set to 'true', also includes base64 encoded image in the response.`,
     {
-      projectRoot: z.string().describe('Root directory path of the development project'),
       selector: z.string().optional().describe('CSS selector to capture (captures full page if not provided)'),
-      url: z.string().optional().describe('URL to navigate to before capturing screenshot')
+      url: z.string().optional().describe('URL to navigate to before capturing screenshot. Do not provide if you want to capture the current page.')
     },
-    async ({ projectRoot, selector, url }) => {
+    async ({ selector, url }) => {
       try {
         // Check browser status
         const browserStatus = ensureBrowserStarted();
@@ -285,49 +287,61 @@ If the image is successfully saved, you should request the user to provide the i
         // Get final URL (may be different after navigation)
         const finalUrl = browserStatus.page.url();
 
-        // Use checkpoint ID or random ID for filename
-        const hashForFilename = checkpointId || randomUUID().substring(0, 8);
-
-        // Generate filename: YYYY-MM-DD.{checkpoint_hash}.png
-        const filename = `${new Date().toISOString().split('T')[0]}.${hashForFilename}.png`;
-
-        const projectScreenshotsDir = path.join(projectRoot, '.mcp_screenshot');
-
-        // Create screenshots directory if it doesn't exist
-        try {
-          await fs.mkdir(projectScreenshotsDir, { recursive: true });
-        } catch (error) {
-          Logger.error(`Failed to create screenshots directory: ${error}`);
+        // Use screenshot helpers if available
+        if (!screenshotHelpers) {
+          return {
+            content: [
+              {
+                type: 'text',
+                text: 'Screenshot helpers not available. Cannot save screenshot.'
+              }
+            ],
+            isError: true
+          };
         }
 
-        // Full file path
-        const screenshotFilepath = path.join(projectScreenshotsDir, filename);
+        // Add screenshot using the resource system
+        const description = selector
+          ? `Screenshot of element ${selector} at ${finalUrl}`
+          : `Screenshot of full page at ${finalUrl}`;
 
-        // Save file
-        await fs.writeFile(screenshotFilepath, screenshot);
+        const screenshotResult = await screenshotHelpers.addScreenshot(
+          screenshot,
+          description,
+          checkpointId,
+          finalUrl.replace(/^http(s)?:\/\//, '')
+        );
 
-        Logger.info(`Screenshot saved: ${screenshotFilepath}`);
+        Logger.info(`Screenshot saved with ID: ${screenshotResult.id}, URI: ${screenshotResult.resourceUri}`);
 
         // Result message construction
         const resultMessage = {
-          message: `Screenshot saved to ${screenshotFilepath}`,
-          filename: path.basename(screenshotFilepath),
+          message: 'Screenshot captured successfully',
+          id: screenshotResult.id,
+          resourceUri: screenshotResult.resourceUri,
           checkpointId,
           url: finalUrl,
         };
 
+        // Build content array
+        const content: Array<{ type: 'text'; text: string } | { type: 'image'; data: string; mimeType: string }> = [
+          {
+            type: 'text' as const,
+            text: JSON.stringify(resultMessage, null, 2)
+          }
+        ];
+
+        // Add base64 image only if ENABLE_BASE64 is true
+        if (ENABLE_BASE64) {
+          content.push({
+            type: 'image' as const,
+            data: screenshot.toString('base64'),
+            mimeType: 'image/png'
+          });
+        }
+
         return {
-          content: [
-            {
-              type: 'text',
-              text: JSON.stringify(resultMessage, null, 2)
-            },
-            {
-              type: 'image',
-              data: screenshot.toString('base64'),
-              mimeType: 'image/png'
-            }
-          ]
+          content
         };
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : String(error);
@@ -372,9 +386,9 @@ If the image is successfully saved, you should request the user to provide the i
           const element = document.querySelector(selector);
           if (!element) return null;
 
-          const result: Record<string, any> = {};
-          propertiesToGet.forEach((prop: any) => {
-            result[prop] = (element as any)[prop];
+          const result: Record<string, unknown> = {};
+          propertiesToGet.forEach((prop: string) => {
+            result[prop] = (element as unknown as Record<string, unknown>)[prop];
           });
           return result;
         }, { selector, propertiesToGet: properties });
@@ -449,7 +463,7 @@ If the image is successfully saved, you should request the user to provide the i
           const computedStyle = window.getComputedStyle(element);
           const result: Record<string, string> = {};
 
-          stylePropsToGet.forEach((prop: any) => {
+          stylePropsToGet.forEach((prop: string) => {
             result[prop] = computedStyle.getPropertyValue(prop);
           });
 
@@ -518,7 +532,7 @@ If the image is successfully saved, you should request the user to provide the i
         const checkpointId = await getCurrentCheckpointId(browserStatus.page);
 
         // Retrieve element dimensions and position information
-        const dimensions = await browserStatus.page.evaluate((selector: any) => {
+        const dimensions = await browserStatus.page.evaluate((selector: string) => {
           const element = document.querySelector(selector);
           if (!element) return null;
 
@@ -600,7 +614,12 @@ If the image is successfully saved, you should request the user to provide the i
           return browserStatus.error;
         }
 
-        const requests: any[] = [];
+        const requests: Array<{
+          url: string;
+          method: string;
+          resourceType: string;
+          timestamp: number;
+        }> = [];
         const pattern = urlPattern ? new RegExp(urlPattern) : null;
 
         // Start network request monitoring
@@ -964,8 +983,8 @@ Examples are available in the schema definition.`,
         const checkpointId = await getCurrentCheckpointId(browserStatus.page);
 
         // Define command handler type
-        type CommandArgs = Record<string, any>;
-        type CommandHandler = (page: Page, selector: string | undefined, args: CommandArgs) => Promise<string | Record<string, any>>;
+        type CommandArgs = Record<string, unknown>;
+        type CommandHandler = (page: Page, selector: string | undefined, args: CommandArgs) => Promise<string | Record<string, unknown>>;
 
         // Command handler mapping
         const commandHandlers: Record<string, CommandHandler> = {
@@ -1100,7 +1119,7 @@ Examples are available in the schema definition.`,
             return `Focused on ${selector}`;
           },
 
-          blur: async (page: Page, selector: string | undefined, args: CommandArgs = {}) => {
+          blur: async (page: Page, selector: string | undefined, _args: CommandArgs = {}) => {
             if (!selector) throw new Error('Selector is required for blur command');
 
             await page.evaluate((sel) => {
@@ -1188,7 +1207,7 @@ Examples are available in the schema definition.`,
 
             const propertyValue = await page.evaluate(({ sel, prop }: { sel: string; prop: string }) => {
               const element = document.querySelector(sel);
-              return element ? (element as any)[prop] : null;
+              return element ? (element as unknown as Record<string, unknown>)[prop] : null;
             }, { sel: selector, prop: args.name as string });
 
             return {
@@ -1209,7 +1228,11 @@ Examples are available in the schema definition.`,
 
           drag: async (page: Page, selector: string | undefined, args: CommandArgs = {}) => {
             // Validate required arguments
-            const { sourceX, sourceY, offsetX, offsetY } = args;
+            const sourceX = args.sourceX as number | undefined;
+            const sourceY = args.sourceY as number | undefined;
+            const offsetX = args.offsetX as number | undefined;
+            const offsetY = args.offsetY as number | undefined;
+
             if (sourceX === undefined || sourceY === undefined) {
               throw new Error('sourceX and sourceY are required for drag command');
             }
@@ -1308,7 +1331,7 @@ Examples are available in the schema definition.`,
             // Determine whether to continue based on option
             // Check continueOnError property
             const continueOnError = cmd.args && 'continueOnError' in cmd.args ?
-              (cmd.args as any).continueOnError === true : false;
+              (cmd.args as Record<string, unknown>).continueOnError === true : false;
             if (!continueOnError) {
               break;
             }

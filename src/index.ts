@@ -3,6 +3,8 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { Browser, Page } from 'playwright';
 import { z } from 'zod';
+import { closeScreenshotDB } from './db/screenshot-db.js';
+import { registerPrompt } from './prompt/init.js';
 import { registerScreenshotResource } from './resources/screenshot.js';
 import { registerBrowserTools } from './tools/browser-tools.js';
 import { registerHMRTools } from './tools/hmr-tools.js';
@@ -32,6 +34,8 @@ async function main() {
         resources: {}
       }
     });
+
+    registerPrompt(server);
 
     server.tool('how-to-use', 'Description of how to use the server', {
       section: z.enum(['checkpoint', 'hmr']).describe('Section to describe'),
@@ -74,13 +78,14 @@ If your development environment does not support HMR, you cannot read HMR events
 
     // Register tools and resources
     registerHMRTools(server, lastHMREvents);
+    const screenshotHelpers = registerScreenshotResource(server, browserRef, pageRef);
     registerBrowserTools(
       server,
       browserRef,
       pageRef,
-      lastHMREvents
+      lastHMREvents,
+      screenshotHelpers
     );
-    registerScreenshotResource(server, browserRef, pageRef);
 
     // Set up stdio transport and connect
     const transport = new StdioServerTransport();
@@ -94,6 +99,8 @@ If your development environment does not support HMR, you cannot read HMR events
           Logger.error('Error closing browser:', error);
         });
       }
+      // Close database connection
+      closeScreenshotDB();
     });
   } catch (error) {
     Logger.error('Fatal error in main():', error);

@@ -9,7 +9,7 @@ export class Logger {
    * @param message Log message
    * @param args Additional arguments
    */
-  static info(message: string, ...args: any[]) {
+  static info(message: string, ...args: unknown[]) {
     console.error(`[INFO] ${message}`, ...args);
   }
 
@@ -18,7 +18,7 @@ export class Logger {
    * @param message Log message
    * @param args Additional arguments
    */
-  static error(message: string, ...args: any[]) {
+  static error(message: string, ...args: unknown[]) {
     console.error(`[ERROR] ${message}`, ...args);
   }
 
@@ -27,7 +27,7 @@ export class Logger {
    * @param message Log message
    * @param args Additional arguments
    */
-  static debug(message: string, ...args: any[]) {
+  static debug(message: string, ...args: unknown[]) {
     console.error(`[DEBUG] ${message}`, ...args);
   }
 
@@ -36,7 +36,7 @@ export class Logger {
    * @param message Log message
    * @param args Additional arguments
    */
-  static warn(message: string, ...args: any[]) {
+  static warn(message: string, ...args: unknown[]) {
     console.error(`[WARN] ${message}`, ...args);
   }
 }

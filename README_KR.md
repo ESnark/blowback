@@ -4,42 +4,67 @@
 >
 > Blowback은 Vite 이외의 다양한 FE 개발 환경을 지원하기 위해 만들어졌습니다.
 
-FE 개발 서버를 Cursor와 통합하는 Model Context Protocol(MCP) 서버입니다.
+FE 개발 서버를 Claude Desktop, Cursor 등의 AI 도구와 통합하는 Model Context Protocol(MCP) 서버입니다.
 
 ## 주요 기능
 
 - 로컬 개발 서버와 MCP 서버 통합
 - 브라우저 콘솔 로그 캡처 및 MCP를 통한 전송
 - 체크포인트 기반 로그 관리
+- 스크린샷 캡처 및 SQLite 데이터베이스 관리
+- HMR(Hot Module Replacement) 이벤트 모니터링
+- 브라우저 자동화 및 요소 검사
+
+## init 프롬프트
+
+`init` 프롬프트는 AI가 다음 기능들을 효과적으로 사용할 수 있도록 가이드를 제공합니다:
+
+**Cursor Chat** 에서는 MCP 프롬프트 기능을 지원하지 않으므로 이 기능을 사용할 수 없습니다. (Claude Code 권장)
+필요한 경우 다음 프롬프트를 수동으로 입력하세요
+
+
+> head에 `<meta name="__mcp_checkpoint" data-id="">`를 삽입하여 현재 상태의 명명된 스냅샷을 생성하는 체크포인트 기능을 사용할 수 있습니다.
+> data-id 속성은 체크포인트의 고유 식별자입니다.
+>
+> 체크포인트가 활성화된 동안 브라우저에서 생성된 콘솔 로그는 체크포인트 ID로 태그되어 개별적으로 조회할 수 있습니다.
+>
+> 참고: 일부 개발환경에서는 파일 저장 시 hot reload가 트리거되므로, 메타 태그 변경과 관찰하려는 변경 사항 간의 순서를 신중히 고려하세요. 추적하려는 변경 사항을 만들기 전에 체크포인트 메타 태그를 설정해야 합니다.
+>
+> capture-screenshot 도구를 사용하여 스크린샷을 캡처할 수 있습니다. 캡처된 스크린샷은 @.mcp_screenshots/ 디렉토리에 저장됩니다.
 
 ## 설치
 
-Cursor의 MCP 설정에 서버를 추가합니다:
+### Claude Desktop 또는 Cursor의 MCP 설정에 서버를 추가합니다:
 
 ```json
 {
   "blowback": {
     "command": "npx",
-    "args": ["-y", "blowback-context"]
+    "args": ["-y", "blowback-context"],
+    "env": {
+      "PROJECT_ROOT": "/path/to/your/project"
+    }
   }
 }
 ```
 
-## Resources
+### Node.js 버전 호환성
 
-### ~~console-logs~~
+Blowback은 네이티브 바인딩이 필요한 `better-sqlite3`를 사용합니다. `NODE_MODULE_VERSION` 불일치 오류가 발생하는 경우:
 
-브라우저 콘솔 로그를 조회하는 리소스입니다.
+1. 패키지에는 네이티브 모듈을 자동으로 재빌드하는 `postinstall` 스크립트가 포함되어 있습니다
+2. 자동 재빌드가 실패하면 수동으로 재빌드할 수 있습니다:
+   ```bash
+   npm rebuild better-sqlite3
+   # 또는
+   npx node-gyp rebuild
+   ```
+3. Node.js 버전이 20.0.0 이상인지 확인하세요 (engines에 명시됨)
 
-현재 Cursor에서는 리소스를 지원되지 않으므로 `get-console-logs` tool을 사용하면 됩니다.
+### 환경 변수
 
-추후 개발 예정입니다.
-
-### screenshot
-
-스크린샷을 캡처하고 관리하는 리소스입니다.
-
-다른 리소스와 마찬가지로 현재 Cursor에서는 직접 지원되지 않으므로 `capture-screenshot` 도구를 사용하세요.
+- `PROJECT_ROOT`: 프로젝트 루트 경로 (선택사항, 기본값: 현재 작업 디렉토리)
+- `ENABLE_BASE64`: base64 인코딩된 이미지를 tool 응답에 포함 (기본값 false / 사용하는 경우 토큰 사용량 및 컨텍스트 윈도우에 영향을 줍니다)
 
 ## Tools
 
@@ -50,14 +75,14 @@ Cursor의 MCP 설정에 서버를 추가합니다:
 | `get-hmr-events` | 최근 HMR 이벤트를 가져옵니다 |
 | `check-hmr-status` | HMR 상태를 확인합니다 |
 
-> **참고**: HMR 연결은 필수가 아닌 선택적입니다. 브라우저가 시작되면 자동으로 HMR 이벤트 모니터링이 시작됩니다.
+> **참고**: HMR 연결은 필수가 아닌 선택입니다. 브라우저가 시작되면 자동으로 HMR 이벤트 모니터링이 시작됩니다.
 
 ### 브라우저 도구
 
 | 도구 이름 | 설명 |
 |-----------|-------------|
-| `start-browser` | 브라우저 인스턴스를 시작하고 Vite 개발 서버로 이동합니다. HMR 모니터링이 자동으로 시작됩니다 |
-| `capture-screenshot` | 현재 페이지 또는 특정 요소의 스크린샷을 캡처합니다. 스크린샷은 디스크에 저장됩니다. MCP 클라이언트의 한계로 인해 저장된 스크린샷 이미지를 직접 편집 도구에 전달해야 할 수 있습니다 |
+| `start-browser` | 브라우저 인스턴스를 시작하고 개발 서버로 이동합니다. HMR 모니터링이 자동으로 시작됩니다 |
+| `capture-screenshot` | 현재 페이지 또는 특정 요소의 스크린샷을 캡처합니다. 스크린샷 ID와 리소스 URI를 반환합니다 |
 | `get-element-properties` | 특정 요소의 속성 및 상태 정보를 가져옵니다 |
 | `get-element-styles` | 특정 요소의 스타일 정보를 가져옵니다 |
 | `get-element-dimensions` | 특정 요소의 치수 및 위치 정보를 가져옵니다 |
@@ -72,8 +97,36 @@ Cursor의 MCP 설정에 서버를 추가합니다:
 |-----------|-------------|
 | `how-to-use` | 서버의 특정 기능 사용법에 대한 설명을 제공합니다 |
 
-## 로그 관리 시스템
+## Resources
 
+### screenshots
+
+모든 캡처된 스크린샷을 조회하는 리소스입니다. `capture-screenshot` tool로 캡쳐된 이미지의 참조 id를 여러 기준으로 조회할 수 있습니다.
+
+참조 id에 해당하는 이미지는 `{PROJECT_ROOT}/.mcp_screenshot/` 디렉토리에서 관리됩니다.
+
+- URI: `screenshot://`
+- 모든 스크린샷 목록을 반환합니다
+
+### screenshot-by-url
+
+URL 경로를 기반으로 특정 스크린샷을 조회하는 리소스입니다.
+
+> **참고**: 1.0 버전부터는 리소스를 통한 Blob 응답을 기본적으로 비활성화하고, 파일 참조 정보를 반환합니다.
+
+- URI 템플릿: `screenshot://{+path}`
+- 예시: `screenshot://localhost:5173/about`
+- 프로토콜(http://, https://)을 포함하지 않은 URL 경로를 사용합니다
+
+
+## 데이터 저장 구조
+
+### 스크린샷 저장
+- 스크린샷 이미지: `{PROJECT_ROOT}/.mcp_screenshot/` 디렉토리에 저장
+- 메타데이터: 임시 디렉토리의 SQLite 데이터베이스에서 관리
+- `.mcp_screenshot/` 디렉토리를 `.gitignore`에 추가하는 것을 권장합니다
+
+### 로그 관리 시스템
 - 브라우저의 console log를 캡쳐하여 파일에 저장하고 조회합니다
 - 체크포인트 로그는 체크포인트가 활성화 된 경우에만 저장됩니다
 
@@ -87,19 +140,22 @@ Cursor의 MCP 설정에 서버를 추가합니다:
 
 ### 핵심 구성 요소
 
-1. **MCP 서버**: Cursor에 도구를 제공하는 Model Context Protocol SDK 기반의 중앙 모듈입니다.
+1. **MCP 서버**: AI 도구에 도구와 리소스를 제공하는 Model Context Protocol SDK 기반의 중앙 모듈입니다.
 
 2. **브라우저 자동화**: Playwright를 사용하여 Chrome을 제어하고 변경 사항을 시각적으로 검사할 수 있게 합니다.
 
 3. **체크포인트 시스템**: 비교 및 테스트를 위해 브라우저 상태의 스냅샷을 유지합니다.
 
+4. **SQLite 데이터베이스**: 스크린샷 메타데이터를 효율적으로 관리하고 URL 기반으로 빠르게 조회합니다.
+
 ### 데이터 소스 및 상태 관리
 
 서버는 여러 중요한 데이터 저장소를 유지합니다:
 
-- **HMR 이벤트 기록**: Vite에서 발생한 최근 HMR 이벤트(업데이트, 오류)를 추적합니다.
+- **HMR 이벤트 기록**: 개발 서버에서 발생한 최근 HMR 이벤트(업데이트, 오류)를 추적합니다.
 - **콘솔 메시지 로그**: 디버깅을 위한 브라우저 콘솔 출력을 캡처합니다.
 - **체크포인트 저장소**: DOM 스냅샷을 포함한 브라우저 상태의 이름이 지정된 스냅샷을 저장합니다.
+- **스크린샷 저장소**: 프로젝트 디렉토리에 이미지를 저장하고 SQLite로 메타데이터를 관리합니다.
 
 ### 통신 흐름
 
