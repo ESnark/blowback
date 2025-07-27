@@ -29,7 +29,7 @@ If needed, manually input the following prompt:
 >
 > Note: In some development environments, hot reload is triggered when files are saved, so carefully consider the sequence between meta tag changes and the changes you want to observe. Make sure to set the checkpoint meta tag before making the changes you want to track.
 >
-> You can use the capture-screenshot tool to take screenshots. The captured screenshots are stored in the @.mcp_screenshots/ directory.
+> You can use the capture-screenshot tool to take screenshots. The captured screenshots are stored in the @.mcp_screenshot/ directory.
 
 ## Installation
 
@@ -46,19 +46,6 @@ If needed, manually input the following prompt:
   }
 }
 ```
-
-### Node.js Version Compatibility
-
-Blowback uses `better-sqlite3` which requires native bindings. If you encounter a `NODE_MODULE_VERSION` mismatch error:
-
-1. The package includes a `postinstall` script that automatically rebuilds native modules
-2. If the automatic rebuild fails, you can manually rebuild:
-   ```bash
-   npm rebuild better-sqlite3
-   # or
-   npx node-gyp rebuild
-   ```
-3. Ensure your Node.js version is 20.0.0 or higher (as specified in engines)
 
 ### Environment Variables
 

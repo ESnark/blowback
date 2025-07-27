@@ -1,4 +1,5 @@
-import Database from 'better-sqlite3';
+import pkg from 'node-sqlite3-wasm';
+const { Database } = pkg;
 import path from 'path';
 import { TMP_DIRECTORY } from '../constants.js';
 import { Logger } from '../utils/logger.js';
@@ -23,7 +24,7 @@ export interface ParsedUrl {
 }
 
 export class ScreenshotDB {
-  private db: Database.Database;
+  private db: InstanceType<typeof Database>;
 
   constructor() {
     const dbPath = path.join(TMP_DIRECTORY, 'screenshots.db');
@@ -85,12 +86,12 @@ export class ScreenshotDB {
 
   // Find screenshot by ID
   findById(id: string): ScreenshotRecord | null {
-    const stmt = this.db.prepare(`
+    const rows = this.db.all(`
       SELECT * FROM screenshots WHERE id = ?
-    `);
+    `, [id]) as any[];
 
-    const row = stmt.get(id) as ScreenshotRecord | null;
-    if (!row) return null;
+    if (!rows || rows.length === 0) return null;
+    const row = rows[0];
 
     return {
       ...row,
@@ -102,18 +103,18 @@ export class ScreenshotDB {
   findLatestByUrl(hostname: string, pathname: string): ScreenshotRecord | null {
     Logger.info(`[findLatestByUrl] Searching for hostname: '${hostname}', pathname: '${pathname}'`);
 
-    const stmt = this.db.prepare(`
+    const rows = this.db.all(`
       SELECT * FROM screenshots
       WHERE hostname = ? AND pathname = ?
       ORDER BY timestamp DESC
       LIMIT 1
-    `);
+    `, [hostname, pathname]) as any[];
 
-    const row = stmt.get(hostname, pathname) as ScreenshotRecord | null;
-    if (!row) {
+    if (!rows || rows.length === 0) {
       Logger.info('[findLatestByUrl] No match found');
       return null;
     }
+    const row = rows[0];
 
     Logger.info(`[findLatestByUrl] Found match with id: ${row.id}`);
     return {
@@ -124,13 +125,12 @@ export class ScreenshotDB {
 
   // Find all screenshots by URL
   findAllByUrl(hostname: string, pathname: string): ScreenshotRecord[] {
-    const stmt = this.db.prepare(`
+    const rows = this.db.all(`
       SELECT * FROM screenshots
       WHERE hostname = ? AND pathname = ?
       ORDER BY timestamp DESC
-    `);
+    `, [hostname, pathname]) as any[];
 
-    const rows = stmt.all(hostname, pathname) as ScreenshotRecord[];
     return rows.map(row => ({
       ...row,
       timestamp: new Date(row.timestamp)
@@ -139,12 +139,11 @@ export class ScreenshotDB {
 
   // Find all screenshots
   findAll(): ScreenshotRecord[] {
-    const stmt = this.db.prepare(`
+    const rows = this.db.all(`
       SELECT * FROM screenshots
       ORDER BY timestamp DESC
-    `);
+    `) as any[];
 
-    const rows = stmt.all() as ScreenshotRecord[];
     return rows.map(row => ({
       ...row,
       timestamp: new Date(row.timestamp)
@@ -153,13 +152,6 @@ export class ScreenshotDB {
 
   // Insert new screenshot
   insert(record: ScreenshotRecord): void {
-    const stmt = this.db.prepare(`
-      INSERT INTO screenshots (
-        id, hostname, pathname, query, hash,
-        checkpoint_id, timestamp, mime_type, description
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `);
-
     Logger.info(`Inserting screenshot: ${record.id}`);
     Logger.info(`Hostname: ${record.hostname}`);
     Logger.info(`Pathname: ${record.pathname}`);
@@ -167,7 +159,13 @@ export class ScreenshotDB {
     Logger.info(`Hash: ${record.hash}`);
     Logger.info(`Checkpoint ID: ${record.checkpoint_id}`);
     Logger.info(`Timestamp: ${record.timestamp}`);
-    stmt.run(
+    
+    this.db.run(`
+      INSERT INTO screenshots (
+        id, hostname, pathname, query, hash,
+        checkpoint_id, timestamp, mime_type, description
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `, [
       record.id,
       record.hostname,
       record.pathname,
@@ -177,16 +175,15 @@ export class ScreenshotDB {
       record.timestamp instanceof Date ? record.timestamp.toISOString() : record.timestamp,
       record.mime_type,
       record.description
-    );
+    ]);
   }
 
   // Delete screenshot by ID
   deleteById(id: string): boolean {
-    const stmt = this.db.prepare(`
+    const result = this.db.run(`
       DELETE FROM screenshots WHERE id = ?
-    `);
-
-    const result = stmt.run(id);
+    `, [id]);
+    
     return result.changes > 0;
   }
 
