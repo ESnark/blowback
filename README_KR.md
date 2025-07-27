@@ -30,7 +30,7 @@ FE 개발 서버를 Claude Desktop, Cursor 등의 AI 도구와 통합하는 Mode
 >
 > 참고: 일부 개발환경에서는 파일 저장 시 hot reload가 트리거되므로, 메타 태그 변경과 관찰하려는 변경 사항 간의 순서를 신중히 고려하세요. 추적하려는 변경 사항을 만들기 전에 체크포인트 메타 태그를 설정해야 합니다.
 >
-> capture-screenshot 도구를 사용하여 스크린샷을 캡처할 수 있습니다. 캡처된 스크린샷은 @.mcp_screenshots/ 디렉토리에 저장됩니다.
+> capture-screenshot 도구를 사용하여 스크린샷을 캡처할 수 있습니다. 캡처된 스크린샷은 @.mcp_screenshot/ 디렉토리에 저장됩니다.
 
 ## 설치
 
@@ -47,19 +47,6 @@ FE 개발 서버를 Claude Desktop, Cursor 등의 AI 도구와 통합하는 Mode
   }
 }
 ```
-
-### Node.js 버전 호환성
-
-Blowback은 네이티브 바인딩이 필요한 `better-sqlite3`를 사용합니다. `NODE_MODULE_VERSION` 불일치 오류가 발생하는 경우:
-
-1. 패키지에는 네이티브 모듈을 자동으로 재빌드하는 `postinstall` 스크립트가 포함되어 있습니다
-2. 자동 재빌드가 실패하면 수동으로 재빌드할 수 있습니다:
-   ```bash
-   npm rebuild better-sqlite3
-   # 또는
-   npx node-gyp rebuild
-   ```
-3. Node.js 버전이 20.0.0 이상인지 확인하세요 (engines에 명시됨)
 
 ### 환경 변수
 

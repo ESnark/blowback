@@ -14,7 +14,7 @@ export const registerPrompt = (server: McpServer) => {
 The data-id attribute is a unique identifier for the checkpoint.
 Console logs generated in the browser while a checkpoint is active are tagged with the checkpoint ID and can be queried individually.
 Note: Since hot reload is triggered when files are saved, carefully consider the sequence between meta tag changes and the changes you want to observe. Make sure to set the checkpoint meta tag before making the changes you want to track.
-You can use the capture-screenshot tool to take screenshots. The captured screenshots are stored in the @.mcp_screenshots/ directory.`,
+You can use the capture-screenshot tool to take screenshots. The captured screenshots are stored in the @.mcp_screenshot/ directory.`,
             }
           }
         ]
