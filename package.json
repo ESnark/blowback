@@ -1,6 +1,6 @@
 {
   "name": "blowback-context",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "MCP server that integrates with FE development server for Cursor",
   "main": "dist/index.js",
   "type": "module",

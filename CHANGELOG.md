@@ -1,5 +1,12 @@
 # Blowback MCP
 
+## 1.0.1
+
+### Patch Changes
+
+- f21f64d: - Replaced better-sqlite3 with node-sqlite3-wasm for node version compatibility
+  - Fixed typo in init prompt message
+
 ## 1.0.0
 
 ### Major Changes
