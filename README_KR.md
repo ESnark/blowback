@@ -6,6 +6,36 @@
 
 FE 개발 서버를 Claude Desktop, Cursor 등의 AI 도구와 통합하는 Model Context Protocol(MCP) 서버입니다.
 
+## How to Use
+
+커맨드 (Claude Code):
+```bash
+claude mcp add blowback -s project -e PROJECT_ROOT=/path/to/your/project -- npx -y blowback-context
+```
+
+또는 json 설정:
+- Claude Code: `{PROJECT_ROOT}/.mcp.json`
+- Cursor: `{PROJECT_ROOT}/.cursor/mcp.json`
+
+```json
+{
+  "mcpServers": {
+    "blowback": {
+      "command": "npx",
+      "args": ["-y", "blowback-context"],
+      "env": {
+        "PROJECT_ROOT": "/path/to/your/project"
+      }
+    }
+  }
+}
+```
+
+### 환경 변수
+
+- `PROJECT_ROOT`: 프로젝트 루트 경로 (선택사항, 기본값: 현재 작업 디렉토리)
+- `ENABLE_BASE64`: base64 인코딩된 이미지를 tool 응답에 포함 (기본값 false / 사용하는 경우 토큰 사용량 및 컨텍스트 윈도우에 영향을 줍니다)
+
 ## 주요 기능
 
 - 로컬 개발 서버와 MCP 서버 통합
@@ -31,27 +61,6 @@ FE 개발 서버를 Claude Desktop, Cursor 등의 AI 도구와 통합하는 Mode
 > 참고: 일부 개발환경에서는 파일 저장 시 hot reload가 트리거되므로, 메타 태그 변경과 관찰하려는 변경 사항 간의 순서를 신중히 고려하세요. 추적하려는 변경 사항을 만들기 전에 체크포인트 메타 태그를 설정해야 합니다.
 >
 > capture-screenshot 도구를 사용하여 스크린샷을 캡처할 수 있습니다. 캡처된 스크린샷은 @.mcp_screenshot/ 디렉토리에 저장됩니다.
-
-## 설치
-
-### Claude Desktop 또는 Cursor의 MCP 설정에 서버를 추가합니다:
-
-```json
-{
-  "blowback": {
-    "command": "npx",
-    "args": ["-y", "blowback-context"],
-    "env": {
-      "PROJECT_ROOT": "/path/to/your/project"
-    }
-  }
-}
-```
-
-### 환경 변수
-
-- `PROJECT_ROOT`: 프로젝트 루트 경로 (선택사항, 기본값: 현재 작업 디렉토리)
-- `ENABLE_BASE64`: base64 인코딩된 이미지를 tool 응답에 포함 (기본값 false / 사용하는 경우 토큰 사용량 및 컨텍스트 윈도우에 영향을 줍니다)
 
 ## Tools
 

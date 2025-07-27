@@ -6,6 +6,36 @@
 
 A Model Context Protocol (MCP) server that integrates FE development servers with AI tools like Claude Desktop and Cursor.
 
+## How to Use
+
+Command (Claude Code):
+```bash
+claude mcp add blowback -s project -e PROJECT_ROOT=/path/to/your/project -- npx -y blowback-context
+```
+
+Or use json configuration:
+- Claude Code: `{PROJECT_ROOT}/.mcp.json`
+- Cursor: `{PROJECT_ROOT}/.cursor/mcp.json`
+
+```json
+{
+  "mcpServers": {
+    "blowback": {
+      "command": "npx",
+      "args": ["-y", "blowback-context"],
+      "env": {
+        "PROJECT_ROOT": "/path/to/your/project"
+      }
+    }
+  }
+}
+```
+
+### Environment Variables
+
+- `PROJECT_ROOT`: Project root path (optional, defaults to current working directory)
+- `ENABLE_BASE64`: Include base64 encoded images in tool responses (default: false / affects token usage and context window when enabled)
+
 ## Key Features
 
 - Integration of local development server with MCP server
@@ -31,26 +61,6 @@ If needed, manually input the following prompt:
 >
 > You can use the capture-screenshot tool to take screenshots. The captured screenshots are stored in the @.mcp_screenshot/ directory.
 
-## Installation
-
-### Add the server to your Claude Desktop or Cursor's MCP configuration:
-
-```json
-{
-  "blowback": {
-    "command": "npx",
-    "args": ["-y", "blowback-context"],
-    "env": {
-      "PROJECT_ROOT": "/path/to/your/project"
-    }
-  }
-}
-```
-
-### Environment Variables
-
-- `PROJECT_ROOT`: Project root path (optional, defaults to current working directory)
-- `ENABLE_BASE64`: Include base64 encoded images in tool responses (default: false / affects token usage and context window when enabled)
 
 ## Tools
 
@@ -98,7 +108,7 @@ Images corresponding to reference IDs are managed in the `{PROJECT_ROOT}/.mcp_sc
 
 A resource for querying specific screenshots based on URL path.
 
-> **Note**: tarting from version 1.0, Blob responses through resources are disabled by default, and file reference information is returned instead
+> **Note**: Starting from version 1.0, Blob responses through resources are disabled by default, and file reference information is returned instead
 
 - URI template: `screenshot://{+path}`
 - Example: `screenshot://localhost:5173/about`
