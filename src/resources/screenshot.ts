@@ -93,7 +93,6 @@ export function registerScreenshotResource(
     return {
       contents: screenshots.map(screenshot => ({
         uri: `screenshot://${screenshot.hostname}${screenshot.pathname}`,
-        mimeType: screenshot.mime_type,
         text: `Screenshot of ${screenshot.hostname}${screenshot.pathname} - ${screenshot.description}`,
         id: screenshot.id,
         path: getFilePath(screenshot.id),
@@ -122,6 +121,7 @@ export function registerScreenshotResource(
 
     if (ENABLE_BASE64) {
       const imageBuffer = await fs.readFile(filePath);
+      content.mimeType = screenshot.mime_type;
       content.blob = imageBuffer.toString('base64');
     } else {
       content.text = `Screenshot ${screenshot.id}`;
@@ -219,13 +219,14 @@ export function registerScreenshotResource(
       const content: any = {
         id: existing.id,
         uri: `screenshot://${host}${pathname}`,
-        mimeType: existing.mime_type,
+        path: filePath,
         checkpoint_id: existing.checkpoint_id,
         timestamp: existing.timestamp.toISOString()
       };
 
       if (ENABLE_BASE64) {
         const imageBuffer = await fs.readFile(filePath);
+        content.mimeType = existing.mime_type;
         content.blob = imageBuffer.toString('base64');
       } else {
         content.text = `Screenshot of ${host}${pathname} - ${existing.description}`;
