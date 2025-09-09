@@ -14,6 +14,9 @@ export interface ScreenshotRecord {
   timestamp: Date;
   mime_type: string;
   description: string;
+  browser_id?: string; // New field for browser identification
+  browser_type?: string;
+  session_id?: string;
 }
 
 export interface ParsedUrl {
@@ -34,7 +37,7 @@ export class ScreenshotDB {
   }
 
   private init() {
-    // Create screenshots table
+    // Create screenshots table with browser support
     this.db.exec(`
       CREATE TABLE IF NOT EXISTS screenshots (
         id TEXT PRIMARY KEY,
@@ -45,7 +48,23 @@ export class ScreenshotDB {
         checkpoint_id TEXT,
         timestamp DATETIME NOT NULL,
         mime_type TEXT NOT NULL,
-        description TEXT
+        description TEXT,
+        browser_id TEXT,
+        browser_type TEXT,
+        session_id TEXT
+      )
+    `);
+
+    // Create browser_instances table for persistence
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS browser_instances (
+        id TEXT PRIMARY KEY,
+        type TEXT NOT NULL,
+        display_name TEXT,
+        metadata TEXT,
+        created_at DATETIME NOT NULL,
+        last_used_at DATETIME NOT NULL,
+        is_active INTEGER DEFAULT 1
       )
     `);
 
@@ -53,6 +72,9 @@ export class ScreenshotDB {
     this.db.exec(`
       CREATE INDEX IF NOT EXISTS idx_screenshots_url ON screenshots(hostname, pathname);
       CREATE INDEX IF NOT EXISTS idx_screenshots_checkpoint ON screenshots(checkpoint_id);
+      CREATE INDEX IF NOT EXISTS idx_screenshots_browser ON screenshots(browser_id);
+      CREATE INDEX IF NOT EXISTS idx_browser_instances_type ON browser_instances(type);
+      CREATE INDEX IF NOT EXISTS idx_browser_instances_active ON browser_instances(is_active);
     `);
   }
 
@@ -158,13 +180,15 @@ export class ScreenshotDB {
     Logger.info(`Query: ${record.query}`);
     Logger.info(`Hash: ${record.hash}`);
     Logger.info(`Checkpoint ID: ${record.checkpoint_id}`);
+    Logger.info(`Browser ID: ${record.browser_id}`);
     Logger.info(`Timestamp: ${record.timestamp}`);
     
     this.db.run(`
       INSERT INTO screenshots (
         id, hostname, pathname, query, hash,
-        checkpoint_id, timestamp, mime_type, description
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        checkpoint_id, timestamp, mime_type, description,
+        browser_id, browser_type, session_id
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `, [
       record.id,
       record.hostname,
@@ -174,7 +198,10 @@ export class ScreenshotDB {
       record.checkpoint_id,
       record.timestamp instanceof Date ? record.timestamp.toISOString() : record.timestamp,
       record.mime_type,
-      record.description
+      record.description,
+      record.browser_id || null,
+      record.browser_type || null,
+      record.session_id || null
     ]);
   }
 
@@ -182,6 +209,86 @@ export class ScreenshotDB {
   deleteById(id: string): boolean {
     const result = this.db.run(`
       DELETE FROM screenshots WHERE id = ?
+    `, [id]);
+    
+    return result.changes > 0;
+  }
+
+  // Browser persistence methods
+  
+  // Insert or update browser instance
+  saveBrowserInstance(id: string, type: string, displayName?: string, metadata?: any): void {
+    const metadataJson = metadata ? JSON.stringify(metadata) : null;
+    const now = new Date().toISOString();
+    
+    // Use REPLACE for upsert behavior
+    this.db.run(`
+      REPLACE INTO browser_instances (
+        id, type, display_name, metadata, created_at, last_used_at, is_active
+      ) VALUES (?, ?, ?, ?, ?, ?, 1)
+    `, [id, type, displayName || null, metadataJson, now, now]);
+    
+    Logger.info(`Browser instance saved: ${id} (${type})`);
+  }
+  
+  // Update browser last used timestamp
+  updateBrowserLastUsed(id: string): void {
+    this.db.run(`
+      UPDATE browser_instances 
+      SET last_used_at = ?, is_active = 1
+      WHERE id = ?
+    `, [new Date().toISOString(), id]);
+  }
+  
+  // Mark browser as inactive
+  deactivateBrowser(id: string): void {
+    this.db.run(`
+      UPDATE browser_instances 
+      SET is_active = 0
+      WHERE id = ?
+    `, [id]);
+    Logger.info(`Browser marked as inactive: ${id}`);
+  }
+  
+  // Get browser instance from database
+  getBrowserInstance(id: string): any {
+    const rows = this.db.all(`
+      SELECT * FROM browser_instances WHERE id = ? AND is_active = 1
+    `, [id]) as any[];
+    
+    if (!rows || rows.length === 0) return null;
+    const row = rows[0];
+    
+    return {
+      ...row,
+      metadata: row.metadata ? JSON.parse(row.metadata) : null,
+      created_at: new Date(row.created_at),
+      last_used_at: new Date(row.last_used_at),
+      is_active: Boolean(row.is_active)
+    };
+  }
+  
+  // Get all active browser instances
+  getAllActiveBrowsers(): any[] {
+    const rows = this.db.all(`
+      SELECT * FROM browser_instances 
+      WHERE is_active = 1 
+      ORDER BY last_used_at DESC
+    `) as any[];
+    
+    return rows.map(row => ({
+      ...row,
+      metadata: row.metadata ? JSON.parse(row.metadata) : null,
+      created_at: new Date(row.created_at),
+      last_used_at: new Date(row.last_used_at),
+      is_active: Boolean(row.is_active)
+    }));
+  }
+  
+  // Delete browser instance from database
+  deleteBrowserInstance(id: string): boolean {
+    const result = this.db.run(`
+      DELETE FROM browser_instances WHERE id = ?
     `, [id]);
     
     return result.changes > 0;
