@@ -1,10 +1,11 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import { Browser, chromium, ConsoleMessage, Page, Request } from 'playwright';
+import { Browser, Page, Request } from 'playwright';
 import { z } from 'zod';
 import { ENABLE_BASE64 } from '../constants.js';
 import { HMREvent } from '../types/hmr.js';
 import { Logger } from '../utils/logger.js';
 import { LogManager } from './log-manager.js';
+import { BrowserManager } from '../managers/browser-manager.js';
 
 // Return type definition
 type BrowserStatus = {
@@ -20,11 +21,10 @@ type BrowserStatus = {
 
 export function registerBrowserTools(
   server: McpServer,
-  browserRef: { current: Browser | null },
-  pageRef: { current: Page | null },
+  browserManager: BrowserManager,
   lastHMREvents: HMREvent[],
   screenshotHelpers?: {
-    addScreenshot: (imageData: string | Buffer, description: string, checkpointId: string | null, url?: string) => Promise<{ id: string; resourceUri: string }>;
+    addScreenshot: (imageData: string | Buffer, description: string, checkpointId: string | null, url?: string, browserContext?: { browser_id?: string; browser_type?: string; session_id?: string }) => Promise<{ id: string; resourceUri: string }>;
     getScreenshotByPath: (url: string) => unknown;
     getScreenshotUriFromPath: (path: string, withCacheId?: boolean) => string | null;
   }
@@ -32,49 +32,79 @@ export function registerBrowserTools(
   // Get log manager instance
   const logManager = LogManager.getInstance();
 
-  // Function to record logs to file
+  // Function to record logs to file (simplified - will be updated when needed)
   async function appendLogToFile(type: string, text: string) {
     try {
-      // Read current checkpoint ID from meta tag
-      const checkpointId = await pageRef.current?.evaluate(() => {
-        const metaTag = document.querySelector('meta[name="__mcp_checkpoint"]');
-        return metaTag ? metaTag.getAttribute('data-id') : null;
-      }) || null;
-
-      const url = await pageRef.current?.evaluate(() => window.location.href) || 'unknown';
       const logEntry = JSON.stringify({
         type,
         text,
         timestamp: new Date().toISOString(),
-        url,
-        checkpointId
+        url: 'unknown',
+        checkpointId: null
       }) + '\n';
 
       // Record log
-      await logManager.appendLog(logEntry, checkpointId || undefined);
+      await logManager.appendLog(logEntry);
 
     } catch (error) {
       Logger.error(`Failed to write console log to file: ${error}`);
     }
   }
 
-  // Utility function: Check browser status
-  const ensureBrowserStarted = (): BrowserStatus => {
-    if (!browserRef.current || !pageRef.current) {
+  // Utility function: Get browser for operation
+  const getBrowserForOperation = (browserId?: string): BrowserStatus => {
+    let browserInstance;
+    
+    if (browserId) {
+      browserInstance = browserManager.getBrowser(browserId);
+      if (!browserInstance) {
+        return {
+          isStarted: false,
+          error: {
+            content: [
+              {
+                type: 'text',
+                text: `Browser '${browserId}' not found. Use 'list-browsers' to see available browsers or 'start-browser-with-id' to create one.`
+              }
+            ],
+            isError: true
+          }
+        };
+      }
+    } else {
+      browserInstance = browserManager.getMostRecentBrowser();
+      if (!browserInstance) {
+        return {
+          isStarted: false,
+          error: {
+            content: [
+              {
+                type: 'text',
+                text: 'No active browsers found. Use \'start-browser-with-id\' to create a browser first.'
+              }
+            ],
+            isError: true
+          }
+        };
+      }
+    }
+
+    if (!browserInstance.page) {
       return {
         isStarted: false,
         error: {
           content: [
             {
               type: 'text',
-              text: 'Browser not started. Please call start-browser first.'
+              text: `Browser '${browserInstance.id}' has no active page.`
             }
           ],
           isError: true
         }
       };
     }
-    return { isStarted: true, page: pageRef.current };
+
+    return { isStarted: true, page: browserInstance.page };
   };
 
   // Utility function: Get current checkpoint ID
@@ -86,148 +116,6 @@ export function registerBrowserTools(
     return checkpointId;
   };
 
-  // Browser start tool
-  server.tool(
-    'start-browser',
-    'Launches a browser instance and navigates to the dev server',
-    {
-      targetUrl: z.string().optional().describe('URL of the dev server (default: http://localhost:5173)'),
-      headless: z.boolean().optional().describe('Run browser in headless mode')
-    },
-    async ({ targetUrl = 'http://localhost:5173', headless = false }) => {
-      try {
-        if (browserRef.current) {
-          await browserRef.current.close();
-          Logger.info('Closed existing browser instance');
-        }
-
-        Logger.info(`Starting browser and navigating to ${targetUrl}`);
-        browserRef.current = await chromium.launch({
-          headless
-        });
-
-        const context = await browserRef.current.newContext({
-          viewport: { width: 1280, height: 800 }
-        });
-        pageRef.current = await context.newPage();
-
-        // Create CDP session and enable network monitoring
-        const cdpClient = await context.newCDPSession(pageRef.current);
-        await cdpClient.send('Network.enable');
-
-        // Set up WebSocket event listener
-        cdpClient.on('Network.webSocketCreated', (params: { url: string; requestId: string }) => {
-          Logger.info(`WebSocket created: ${params.url}`);
-
-          // Detect HMR-related WebSocket connections (URLs containing localhost, token, or hmr)
-          if (params.url.includes('localhost') || params.url.includes('?token=') || params.url.includes('hmr')) {
-            Logger.info(`HMR WebSocket detected: ${params.url}`);
-          }
-        });
-
-        // Detect WebSocket message reception
-        cdpClient.on('Network.webSocketFrameReceived', (params: { requestId: string; timestamp: number; response: { opcode: number; mask: boolean; payloadData: string } }) => {
-          try {
-            const data = JSON.parse(params.response.payloadData);
-            Logger.debug(`WebSocket message received: ${JSON.stringify(data)}`);
-
-            // Convert to HMR event
-            if (data.type) {
-              const hmrEvent = {
-                type: data.type,
-                ...data,
-                timestamp: new Date().toISOString()
-              };
-
-              // Store event
-              lastHMREvents.unshift(hmrEvent);
-              if (lastHMREvents.length > 10) {
-                lastHMREvents.pop();
-              }
-
-              Logger.info(`HMR event detected: ${data.type}`);
-            }
-          } catch (err) {
-            // Ignore non-JSON messages
-          }
-        });
-
-        // Console message handler
-        pageRef.current.on('console', async (msg: ConsoleMessage) => {
-          Logger.info('Browser console', msg);
-          const messageText = msg.text();
-          const messageType = msg.type();
-          await appendLogToFile(messageType, messageText);
-          Logger.debug(`Browser console ${messageType}: ${messageText}`);
-
-          // Filter HMR-related console messages
-          if (messageText.includes('[vite]') ||
-              messageText.includes('hmr') ||
-              messageText.includes('update')) {
-            // Extract HMR-related information from console logs
-            const hmrEvent = {
-              type: messageText.includes('error') ? 'error' : 'update',
-              message: messageText,
-              timestamp: new Date().toISOString()
-            };
-
-            lastHMREvents.unshift(hmrEvent);
-            if (lastHMREvents.length > 10) {
-              lastHMREvents.pop();
-            }
-          }
-        });
-
-        // Page error handler
-        pageRef.current.on('pageerror', async (err: Error) => {
-          await appendLogToFile('error', err.message);
-          Logger.error(`Browser page error: ${err}`);
-          lastHMREvents.unshift({
-            type: 'browser-error',
-            err: {
-              message: err.message,
-              stack: err.stack || ''
-            }
-          });
-          if (lastHMREvents.length > 10) {
-            lastHMREvents.pop();
-          }
-        });
-
-        // Set up page navigation event listener
-        pageRef.current.on('framenavigated', async (frame: { url: () => string }) => {
-          if (frame === pageRef.current?.mainFrame()) {
-            const url = frame.url();
-            await appendLogToFile('navigation', `frame navigated: ${url}`);
-          }
-        });
-
-        // Navigate to Vite development server
-        await pageRef.current.goto(targetUrl, { waitUntil: 'networkidle' });
-
-        return {
-          content: [
-            {
-              type: 'text',
-              text: `Successfully started browser and navigated to ${targetUrl}. HMR monitoring is active.`
-            }
-          ]
-        };
-      } catch (error) {
-        const errorMessage = error instanceof Error ? error.message : String(error);
-        Logger.error(`Failed to start browser: ${errorMessage}`);
-        return {
-          content: [
-            {
-              type: 'text',
-              text: `Failed to start browser: ${errorMessage}`
-            }
-          ],
-          isError: true
-        };
-      }
-    }
-  );
 
   // Screenshot capture tool
   server.tool(
@@ -237,12 +125,13 @@ Stores the screenshot in the MCP resource system and returns a resource URI.
 If ENABLE_BASE64 environment variable is set to 'true', also includes base64 encoded image in the response.`,
     {
       selector: z.string().optional().describe('CSS selector to capture (captures full page if not provided)'),
-      url: z.string().optional().describe('URL to navigate to before capturing screenshot. Do not provide if you want to capture the current page.')
+      url: z.string().optional().describe('URL to navigate to before capturing screenshot. Do not provide if you want to capture the current page.'),
+      browserId: z.string().optional().describe('Browser ID to capture from (uses most recent browser if not provided)')
     },
-    async ({ selector, url }) => {
+    async ({ selector, url, browserId }) => {
       try {
-        // Check browser status
-        const browserStatus = ensureBrowserStarted();
+        // Get browser for operation
+        const browserStatus = getBrowserForOperation(browserId);
         if (!browserStatus.isStarted) {
           return browserStatus.error;
         }
@@ -305,11 +194,34 @@ If ENABLE_BASE64 environment variable is set to 'true', also includes base64 enc
           ? `Screenshot of element ${selector} at ${finalUrl}`
           : `Screenshot of full page at ${finalUrl}`;
 
+        // Get browser context from the actual browser instance
+        let browserContext = {};
+        if (browserId) {
+          const browserInstance = browserManager.getBrowser(browserId);
+          if (browserInstance) {
+            browserContext = {
+              browser_id: browserInstance.id,
+              browser_type: browserInstance.type,
+              session_id: `${browserInstance.id}-${browserInstance.createdAt.getTime()}`
+            };
+          }
+        } else {
+          const browserInstance = browserManager.getMostRecentBrowser();
+          if (browserInstance) {
+            browserContext = {
+              browser_id: browserInstance.id,
+              browser_type: browserInstance.type,
+              session_id: `${browserInstance.id}-${browserInstance.createdAt.getTime()}`
+            };
+          }
+        }
+
         const screenshotResult = await screenshotHelpers.addScreenshot(
           screenshot,
           description,
           checkpointId,
-          finalUrl.replace(/^http(s)?:\/\//, '')
+          finalUrl.replace(/^http(s)?:\/\//, ''),
+          browserContext
         );
 
         Logger.info(`Screenshot saved with ID: ${screenshotResult.id}, URI: ${screenshotResult.resourceUri}`);
@@ -370,7 +282,7 @@ If ENABLE_BASE64 environment variable is set to 'true', also includes base64 enc
     async ({ selector, properties }) => {
       try {
         // Check browser status
-        const browserStatus = ensureBrowserStarted();
+        const browserStatus = getBrowserForOperation();
         if (!browserStatus.isStarted) {
           return browserStatus.error;
         }
@@ -447,7 +359,7 @@ If ENABLE_BASE64 environment variable is set to 'true', also includes base64 enc
     async ({ selector, styleProperties }) => {
       try {
         // Check browser status
-        const browserStatus = ensureBrowserStarted();
+        const browserStatus = getBrowserForOperation();
         if (!browserStatus.isStarted) {
           return browserStatus.error;
         }
@@ -523,7 +435,7 @@ If ENABLE_BASE64 environment variable is set to 'true', also includes base64 enc
     async ({ selector }) => {
       try {
         // Check browser status
-        const browserStatus = ensureBrowserStarted();
+        const browserStatus = getBrowserForOperation();
         if (!browserStatus.isStarted) {
           return browserStatus.error;
         }
@@ -609,7 +521,7 @@ If ENABLE_BASE64 environment variable is set to 'true', also includes base64 enc
     async ({ urlPattern, duration = 5000 }) => {
       try {
         // Check browser status
-        const browserStatus = ensureBrowserStarted();
+        const browserStatus = getBrowserForOperation();
         if (!browserStatus.isStarted) {
           return browserStatus.error;
         }
@@ -680,7 +592,7 @@ If ENABLE_BASE64 environment variable is set to 'true', also includes base64 enc
     async ({ selector, includeOuter = false }) => {
       try {
         // Check browser status
-        const browserStatus = ensureBrowserStarted();
+        const browserStatus = getBrowserForOperation();
         if (!browserStatus.isStarted) {
           return browserStatus.error;
         }
@@ -969,12 +881,13 @@ Examples are available in the schema definition.`,
           })
         ])
       ).describe('Array of commands to execute in sequence'),
-      timeout: z.number().optional().describe('Overall timeout in milliseconds (default: 30000)')
+      timeout: z.number().optional().describe('Overall timeout in milliseconds (default: 30000)'),
+      browserId: z.string().optional().describe('Browser ID to execute commands on (uses most recent browser if not provided)')
     },
-    async ({ commands, timeout = 30000 }) => {
+    async ({ commands, timeout = 30000, browserId }) => {
       try {
         // Check browser status
-        const browserStatus = ensureBrowserStarted();
+        const browserStatus = getBrowserForOperation(browserId);
         if (!browserStatus.isStarted) {
           return browserStatus.error;
         }

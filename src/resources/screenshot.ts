@@ -265,7 +265,8 @@ export function registerScreenshotResource(
       imageData: string | Buffer,
       description: string,
       checkpointId: string | null = null,
-      url?: string
+      url?: string,
+      browserContext?: { browser_id?: string; browser_type?: string; session_id?: string }
     ): Promise<{ id: string; resourceUri: string }> => {
       const id = randomUUID();
 
@@ -300,7 +301,10 @@ export function registerScreenshotResource(
           checkpoint_id: checkpointId,
           timestamp: new Date(),
           mime_type: 'image/png',
-          description
+          description,
+          browser_id: browserContext?.browser_id,
+          browser_type: browserContext?.browser_type,
+          session_id: browserContext?.session_id
         });
         Logger.info(`[addScreenshot] Screenshot saved to database with ID: ${id}`);
 
@@ -317,7 +321,10 @@ export function registerScreenshotResource(
           checkpoint_id: checkpointId,
           timestamp: new Date(),
           mime_type: 'image/png',
-          description
+          description,
+          browser_id: browserContext?.browser_id,
+          browser_type: browserContext?.browser_type,
+          session_id: browserContext?.session_id
         });
         Logger.info(`Screenshot saved to database with ID: ${id} (no URL)`);
 

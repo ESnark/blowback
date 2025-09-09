@@ -7,6 +7,7 @@ import { closeScreenshotDB } from './db/screenshot-db.js';
 import { registerPrompt } from './prompt/init.js';
 import { registerScreenshotResource } from './resources/screenshot.js';
 import { registerBrowserTools } from './tools/browser-tools.js';
+import { registerBrowserManagerTools } from './tools/browser-manager-tools.js';
 import { registerHMRTools } from './tools/hmr-tools.js';
 import { HMREvent } from './types/hmr.js';
 import { Logger } from './utils/logger.js';
@@ -76,13 +77,16 @@ If your development environment does not support HMR, you cannot read HMR events
       }
     });
 
+
+    // Register new browser manager tools
+    const browserManager = registerBrowserManagerTools(server);
+
     // Register tools and resources
     registerHMRTools(server, lastHMREvents);
     const screenshotHelpers = registerScreenshotResource(server, browserRef, pageRef);
     registerBrowserTools(
       server,
-      browserRef,
-      pageRef,
+      browserManager,
       lastHMREvents,
       screenshotHelpers
     );
