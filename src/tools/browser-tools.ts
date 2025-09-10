@@ -1,11 +1,11 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import { Browser, Page, Request } from 'playwright';
+import { Page, Request } from 'playwright';
 import { z } from 'zod';
 import { ENABLE_BASE64 } from '../constants.js';
 import { HMREvent } from '../types/hmr.js';
 import { Logger } from '../utils/logger.js';
 import { LogManager } from './log-manager.js';
-import { BrowserManager } from '../managers/browser-manager.js';
+import { ContextManager } from '../managers/context-manager.js';
 
 // Return type definition
 type BrowserStatus = {
@@ -21,7 +21,7 @@ type BrowserStatus = {
 
 export function registerBrowserTools(
   server: McpServer,
-  browserManager: BrowserManager,
+  contextManager: ContextManager,
   lastHMREvents: HMREvent[],
   screenshotHelpers?: {
     addScreenshot: (imageData: string | Buffer, description: string, checkpointId: string | null, url?: string, browserContext?: { browser_id?: string; browser_type?: string; session_id?: string }) => Promise<{ id: string; resourceUri: string }>;
@@ -52,19 +52,19 @@ export function registerBrowserTools(
   }
 
   // Utility function: Get browser for operation
-  const getBrowserForOperation = (browserId?: string): BrowserStatus => {
-    let browserInstance;
+  const getContextForOperation = (contextId?: string): BrowserStatus => {
+    let contextInstance;
     
-    if (browserId) {
-      browserInstance = browserManager.getBrowser(browserId);
-      if (!browserInstance) {
+    if (contextId) {
+      contextInstance = contextManager.getContext(contextId);
+      if (!contextInstance) {
         return {
           isStarted: false,
           error: {
             content: [
               {
                 type: 'text',
-                text: `Browser '${browserId}' not found. Use 'list-browsers' to see available browsers or 'start-browser-with-id' to create one.`
+                text: `Browser '${contextId}' not found. Use 'list-browsers' to see available browsers or 'start-browser' to create one.`
               }
             ],
             isError: true
@@ -72,15 +72,15 @@ export function registerBrowserTools(
         };
       }
     } else {
-      browserInstance = browserManager.getMostRecentBrowser();
-      if (!browserInstance) {
+      contextInstance = contextManager.getMostRecentContext();
+      if (!contextInstance) {
         return {
           isStarted: false,
           error: {
             content: [
               {
                 type: 'text',
-                text: 'No active browsers found. Use \'start-browser-with-id\' to create a browser first.'
+                text: 'No active browsers found. Use \'start-browser\' to create a browser first.'
               }
             ],
             isError: true
@@ -89,22 +89,9 @@ export function registerBrowserTools(
       }
     }
 
-    if (!browserInstance.page) {
-      return {
-        isStarted: false,
-        error: {
-          content: [
-            {
-              type: 'text',
-              text: `Browser '${browserInstance.id}' has no active page.`
-            }
-          ],
-          isError: true
-        }
-      };
-    }
+    // Note: contextInstance.page is now always defined (never null)
 
-    return { isStarted: true, page: browserInstance.page };
+    return { isStarted: true, page: contextInstance.page };
   };
 
   // Utility function: Get current checkpoint ID
@@ -117,6 +104,35 @@ export function registerBrowserTools(
   };
 
 
+  /**
+   * Serializes evaluation result based on the specified return type
+   * @param result The raw result from JavaScript evaluation
+   * @param returnType The desired return type
+   * @returns Serialized result
+   */
+  const serializeResult = (result: any, returnType: string): any => {
+    try {
+      switch (returnType) {
+      case 'string': 
+        return String(result);
+      case 'number': 
+        return Number(result);
+      case 'boolean': 
+        return Boolean(result);
+      case 'json': 
+        return JSON.stringify(result, null, 2);
+      case 'auto':
+      default:
+        // Auto-detect and return serializable result
+        return JSON.parse(JSON.stringify(result));
+      }
+    } catch (error) {
+      Logger.warn('Result serialization failed, returning string representation');
+      return String(result);
+    }
+  };
+
+
   // Screenshot capture tool
   server.tool(
     'capture-screenshot',
@@ -126,12 +142,12 @@ If ENABLE_BASE64 environment variable is set to 'true', also includes base64 enc
     {
       selector: z.string().optional().describe('CSS selector to capture (captures full page if not provided)'),
       url: z.string().optional().describe('URL to navigate to before capturing screenshot. Do not provide if you want to capture the current page.'),
-      browserId: z.string().optional().describe('Browser ID to capture from (uses most recent browser if not provided)')
+      contextId: z.string().optional().describe('Browser ID to capture from (uses most recent browser if not provided)')
     },
-    async ({ selector, url, browserId }) => {
+    async ({ selector, url, contextId }) => {
       try {
         // Get browser for operation
-        const browserStatus = getBrowserForOperation(browserId);
+        const browserStatus = getContextForOperation(contextId);
         if (!browserStatus.isStarted) {
           return browserStatus.error;
         }
@@ -196,22 +212,22 @@ If ENABLE_BASE64 environment variable is set to 'true', also includes base64 enc
 
         // Get browser context from the actual browser instance
         let browserContext = {};
-        if (browserId) {
-          const browserInstance = browserManager.getBrowser(browserId);
-          if (browserInstance) {
+        if (contextId) {
+          const contextInstance = contextManager.getContext(contextId);
+          if (contextInstance) {
             browserContext = {
-              browser_id: browserInstance.id,
-              browser_type: browserInstance.type,
-              session_id: `${browserInstance.id}-${browserInstance.createdAt.getTime()}`
+              browser_id: contextInstance.id,
+              browser_type: contextInstance.type,
+              session_id: `${contextInstance.id}-${contextInstance.createdAt.getTime()}`
             };
           }
         } else {
-          const browserInstance = browserManager.getMostRecentBrowser();
-          if (browserInstance) {
+          const contextInstance = contextManager.getMostRecentContext();
+          if (contextInstance) {
             browserContext = {
-              browser_id: browserInstance.id,
-              browser_type: browserInstance.type,
-              session_id: `${browserInstance.id}-${browserInstance.createdAt.getTime()}`
+              browser_id: contextInstance.id,
+              browser_type: contextInstance.type,
+              session_id: `${contextInstance.id}-${contextInstance.createdAt.getTime()}`
             };
           }
         }
@@ -282,7 +298,7 @@ If ENABLE_BASE64 environment variable is set to 'true', also includes base64 enc
     async ({ selector, properties }) => {
       try {
         // Check browser status
-        const browserStatus = getBrowserForOperation();
+        const browserStatus = getContextForOperation();
         if (!browserStatus.isStarted) {
           return browserStatus.error;
         }
@@ -359,7 +375,7 @@ If ENABLE_BASE64 environment variable is set to 'true', also includes base64 enc
     async ({ selector, styleProperties }) => {
       try {
         // Check browser status
-        const browserStatus = getBrowserForOperation();
+        const browserStatus = getContextForOperation();
         if (!browserStatus.isStarted) {
           return browserStatus.error;
         }
@@ -435,7 +451,7 @@ If ENABLE_BASE64 environment variable is set to 'true', also includes base64 enc
     async ({ selector }) => {
       try {
         // Check browser status
-        const browserStatus = getBrowserForOperation();
+        const browserStatus = getContextForOperation();
         if (!browserStatus.isStarted) {
           return browserStatus.error;
         }
@@ -521,7 +537,7 @@ If ENABLE_BASE64 environment variable is set to 'true', also includes base64 enc
     async ({ urlPattern, duration = 5000 }) => {
       try {
         // Check browser status
-        const browserStatus = getBrowserForOperation();
+        const browserStatus = getContextForOperation();
         if (!browserStatus.isStarted) {
           return browserStatus.error;
         }
@@ -584,15 +600,16 @@ If ENABLE_BASE64 environment variable is set to 'true', also includes base64 enc
   // Element HTML content retrieval tool
   server.tool(
     'get-element-html',
-    'Retrieves the HTML content of a specific element and its children',
+    'Retrieves the HTML content of a specific element and its children with optional depth control',
     {
       selector: z.string().describe('CSS selector of the element to inspect'),
-      includeOuter: z.boolean().optional().describe("If true, includes the selected element's outer HTML; otherwise returns only inner HTML (default: false)")
+      includeOuter: z.boolean().optional().describe("If true, includes the selected element's outer HTML; otherwise returns only inner HTML (default: false)"),
+      depth: z.number().int().min(-1).optional().describe('Control HTML depth limit: -1 = unlimited (default), 0 = text only, 1+ = limited depth with deeper elements shown as <!-- omitted -->')
     },
-    async ({ selector, includeOuter = false }) => {
+    async ({ selector, includeOuter = false, depth = -1 }) => {
       try {
         // Check browser status
-        const browserStatus = getBrowserForOperation();
+        const browserStatus = getContextForOperation();
         if (!browserStatus.isStarted) {
           return browserStatus.error;
         }
@@ -600,13 +617,42 @@ If ENABLE_BASE64 environment variable is set to 'true', also includes base64 enc
         // Check if element exists
         await browserStatus.page.waitForSelector(selector, { state: 'visible', timeout: 5000 });
 
-        // Get element's HTML content
-        const htmlContent = await browserStatus.page.evaluate(({ selector, includeOuter }: { selector: string; includeOuter: boolean }) => {
+        // Get element's HTML content with depth control
+        const htmlContent = await browserStatus.page.evaluate(({ selector, includeOuter, depth }: { selector: string; includeOuter: boolean; depth: number }) => {
           const element = document.querySelector(selector);
           if (!element) return null;
-
-          return includeOuter ? element.outerHTML : element.innerHTML;
-        }, { selector, includeOuter });
+          
+          // Handle unlimited depth (backward compatibility)
+          if (depth === -1) {
+            return includeOuter ? element.outerHTML : element.innerHTML;
+          }
+          
+          // Handle text-only mode
+          if (depth === 0) {
+            return element.textContent || '';
+          }
+          
+          // Handle depth-limited mode with DOM cloning
+          const cloned = element.cloneNode(true) as Element;
+          
+          function trimDepth(node: Element, currentDepth: number) {
+            if (currentDepth >= depth) {
+              // Replace content with omitted marker
+              node.innerHTML = '<!-- omitted -->';
+              return;
+            }
+            
+            // Process child elements
+            Array.from(node.children).forEach(child => {
+              trimDepth(child, currentDepth + 1);
+            });
+          }
+          
+          // Start depth counting from appropriate level
+          trimDepth(cloned, includeOuter ? 0 : 1);
+          
+          return includeOuter ? cloned.outerHTML : cloned.innerHTML;
+        }, { selector, includeOuter, depth });
 
         if (htmlContent === null) {
           return {
@@ -623,7 +669,9 @@ If ENABLE_BASE64 environment variable is set to 'true', also includes base64 enc
         // Result message construction
         const resultMessage = {
           selector,
-          htmlType: includeOuter ? 'outerHTML' : 'innerHTML',
+          htmlType: depth === 0 ? 'textContent' : (includeOuter ? 'outerHTML' : 'innerHTML'),
+          depth,
+          depthLimited: depth !== -1,
           length: htmlContent.length,
           checkpointId: await getCurrentCheckpointId(browserStatus.page)
         };
@@ -882,12 +930,12 @@ Examples are available in the schema definition.`,
         ])
       ).describe('Array of commands to execute in sequence'),
       timeout: z.number().optional().describe('Overall timeout in milliseconds (default: 30000)'),
-      browserId: z.string().optional().describe('Browser ID to execute commands on (uses most recent browser if not provided)')
+      contextId: z.string().optional().describe('Browser ID to execute commands on (uses most recent browser if not provided)')
     },
-    async ({ commands, timeout = 30000, browserId }) => {
+    async ({ commands, timeout = 30000, contextId }) => {
       try {
         // Check browser status
-        const browserStatus = getBrowserForOperation(browserId);
+        const browserStatus = getContextForOperation(contextId);
         if (!browserStatus.isStarted) {
           return browserStatus.error;
         }
@@ -1278,6 +1326,161 @@ Examples are available in the schema definition.`,
             {
               type: 'text',
               text: `Failed to execute browser commands: ${errorMessage}`
+            }
+          ],
+          isError: true
+        };
+      }
+    }
+  );
+
+  // Browser JavaScript evaluation tool
+  server.tool(
+    'browser-evaluate',
+    `Evaluates JavaScript code directly in the browser context and returns the result.
+Supports both simple expressions and complex functions with argument passing.
+Can target the entire page or work with element handles for precise DOM manipulation.
+
+Examples:
+- Simple expression: "document.title"
+- Function with return: "() => document.querySelectorAll('a').length"
+- Function with arguments: "(url) => window.location.href = url"
+- Async function: "async () => { const res = await fetch('/api'); return res.json(); }"`,
+    {
+      function: z.string().describe(`JavaScript function or expression to execute. Examples:
+- Simple expression: "document.title"
+- Function with return: "() => document.querySelectorAll('a').length"
+- Function with argument: "(url) => window.location.href = url"
+- Async function: "async () => { const res = await fetch('/api'); return res.json(); }"`),
+      
+      args: z.any().optional().describe(`Optional arguments to pass to the JavaScript function.
+Can be primitives, objects, arrays, or element references.
+Example: { url: "https://example.com", count: 5 }`),
+      
+      element: z.string().optional().describe('CSS selector to target specific element for evaluation'),
+      
+      contextId: z.string().optional().describe('Browser ID to execute on (uses most recent browser if not provided)'),
+      
+      timeout: z.number().optional().describe('Execution timeout in milliseconds (default: 30000)'),
+      
+      returnType: z.enum(['auto', 'json', 'string', 'number', 'boolean']).optional()
+        .describe('Expected return type for better serialization (default: auto)'),
+      
+    },
+    async ({ function: jsFunction, args, element, contextId, timeout = 30000, returnType = 'auto' }) => {
+      try {
+        // 1. Browser status validation
+        const browserStatus = getContextForOperation(contextId);
+        if (!browserStatus.isStarted) {
+          return browserStatus.error;
+        }
+
+        // 2. JavaScript execution relies on browser context isolation for security
+
+        // 3. Get current checkpoint ID
+        const checkpointId = await getCurrentCheckpointId(browserStatus.page);
+
+        // 4. Execute JavaScript with optional element targeting
+        let result: any;
+        const startTime = Date.now();
+
+        if (element) {
+          // Element-targeted evaluation
+          try {
+            await browserStatus.page.waitForSelector(element, { timeout: 5000 });
+            const elementHandle = await browserStatus.page.$(element);
+            
+            if (!elementHandle) {
+              return {
+                content: [
+                  {
+                    type: 'text',
+                    text: `Element with selector "${element}" not found`
+                  }
+                ],
+                isError: true
+              };
+            }
+
+            // Execute with element context
+            result = args !== undefined
+              ? await Promise.race([
+                elementHandle.evaluate(jsFunction, args),
+                new Promise((_, reject) => setTimeout(() => reject(new Error('Execution timeout')), timeout))
+              ])
+              : await Promise.race([
+                elementHandle.evaluate(jsFunction),
+                new Promise((_, reject) => setTimeout(() => reject(new Error('Execution timeout')), timeout))
+              ]);
+          } catch (elementError) {
+            const errorMessage = elementError instanceof Error ? elementError.message : String(elementError);
+            Logger.error(`Element evaluation failed: ${errorMessage}`);
+            return {
+              content: [
+                {
+                  type: 'text',
+                  text: `Failed to evaluate on element "${element}": ${errorMessage}`
+                }
+              ],
+              isError: true
+            };
+          }
+        } else {
+          // Page-level evaluation
+          try {
+            // Debug: Check page state before evaluation
+            const currentUrl = browserStatus.page.url();
+            const readyState = await browserStatus.page.evaluate(() => document.readyState);
+            Logger.info(`Evaluating on page: ${currentUrl}, readyState: ${readyState}`);
+            
+            result = args !== undefined
+              ? await Promise.race([
+                browserStatus.page.evaluate(jsFunction, args),
+                new Promise((_, reject) => setTimeout(() => reject(new Error('Execution timeout')), timeout))
+              ])
+              : await Promise.race([
+                browserStatus.page.evaluate(jsFunction),
+                new Promise((_, reject) => setTimeout(() => reject(new Error('Execution timeout')), timeout))
+              ]);
+          } catch (evalError) {
+            Logger.error(`Page evaluation error: ${evalError}`);
+            throw evalError;
+          }
+        }
+
+        const executionTime = Date.now() - startTime;
+
+        // 5. Serialize result based on returnType
+        const serializedResult = serializeResult(result, returnType);
+
+        // 6. Build response
+        const resultMessage = {
+          result: serializedResult,
+          executionTime,
+          checkpointId,
+          element: element || null,
+          returnType,
+          functionCode: jsFunction.length > 200 ? jsFunction.substring(0, 200) + '...' : jsFunction
+        };
+
+        return {
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify(resultMessage, null, 2)
+            }
+          ]
+        };
+
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        Logger.error(`Failed to evaluate JavaScript: ${errorMessage}`);
+        
+        return {
+          content: [
+            {
+              type: 'text',
+              text: `Failed to evaluate JavaScript: ${errorMessage}`
             }
           ],
           isError: true

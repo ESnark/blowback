@@ -10,9 +10,9 @@ export enum BrowserType {
 }
 
 /**
- * Browser metadata interface
+ * Context metadata interface
  */
-export interface BrowserMetadata {
+export interface ContextMetadata {
   tags?: string[];
   purpose?: string;
   targetUrl?: string;
@@ -22,20 +22,19 @@ export interface BrowserMetadata {
 }
 
 /**
- * Browser instance interface
+ * Context instance interface
  */
-export interface BrowserInstance {
+export interface ContextInstance {
   id: string;
   type: BrowserType;
   displayName?: string;
   
   // Runtime objects
-  browser: Browser;
   context: BrowserContext;
-  page: Page | null;
+  page: Page;
   
   // Metadata
-  metadata: BrowserMetadata;
+  metadata: ContextMetadata;
   
   // Timing
   createdAt: Date;
@@ -43,9 +42,9 @@ export interface BrowserInstance {
 }
 
 /**
- * Browser creation options
+ * Context creation options
  */
-export interface BrowserCreateOptions {
+export interface ContextCreateOptions {
   id: string;
   type?: BrowserType;
   displayName?: string;
@@ -57,29 +56,29 @@ export interface BrowserCreateOptions {
 }
 
 /**
- * Browser operation result
+ * Context operation result
  */
-export interface BrowserOperationResult {
+export interface ContextOperationResult {
   success: boolean;
-  browserId?: string;
+  contextId?: string;
   error?: string;
   data?: any;
 }
 
 /**
- * Browser list filter options
+ * Context list filter options
  */
-export interface BrowserListOptions {
+export interface ContextListOptions {
   activeOnly?: boolean;
   type?: BrowserType;
   tags?: string[];
 }
 
 /**
- * Browser statistics
+ * Context statistics
  */
-export interface BrowserStats {
-  browserId: string;
+export interface ContextStats {
+  contextId: string;
   type: BrowserType;
   displayName?: string;
   uptime: number; // milliseconds
@@ -87,4 +86,15 @@ export interface BrowserStats {
   totalScreenshots: number;
   totalLogs: number;
   lastActivity: Date;
+}
+
+/**
+ * Browser manager interface for shared browser instance
+ */
+export interface SharedBrowserInstance {
+  browser: Browser;
+  type: BrowserType;
+  createdAt: Date;
+  contextCount: number;
+  cdpEndpoint?: string; // Chrome DevTools Protocol endpoint
 }

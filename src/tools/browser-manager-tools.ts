@@ -1,24 +1,25 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
-import { BrowserManager } from '../managers/browser-manager.js';
+import { randomUUID } from 'crypto';
+import { ContextManager } from '../managers/context-manager.js';
 import { BrowserType } from '../types/browser.js';
 import { Logger } from '../utils/logger.js';
 
 /**
- * Register browser manager tools for multi-browser support
+ * Register context manager tools for multi-context support
  */
 export function registerBrowserManagerTools(server: McpServer) {
-  const browserManager = new BrowserManager();
+  const contextManager = new ContextManager();
 
-  // Initialize browser manager on startup
-  browserManager.initialize().catch(error => {
-    Logger.error('Failed to initialize browser manager:', error);
+  // Initialize context manager on startup
+  contextManager.initialize().catch(error => {
+    Logger.error('Failed to initialize context manager:', error);
   });
 
-  // Create browser tool (with auto-generated ID)
+  // Create context tool (with auto-generated ID)
   server.tool(
     'start-browser',
-    'Creates a new browser instance with an auto-generated unique ID',
+    'Creates a new browser context with an auto-generated unique ID',
     {
       type: z.enum(['chromium', 'firefox', 'webkit']).optional().describe('Browser type (default: chromium)'),
       displayName: z.string().optional().describe('Human-readable name for the browser'),
@@ -32,12 +33,12 @@ export function registerBrowserManagerTools(server: McpServer) {
       purpose: z.string().optional().describe('Description of what this browser is for')
     },
     async ({ type, displayName, targetUrl, headless, viewport, tags, purpose }) => {
-      // Generate unique browser ID at function scope
-      const browserId = `browser-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+      // Generate cryptographically secure unique browser ID
+      const contextId = `context-${randomUUID()}`;
       
       try {
-        const result = await browserManager.createBrowser({
-          id: browserId,
+        const result = await contextManager.createContext({
+          id: contextId,
           type: type as BrowserType | undefined,
           displayName,
           targetUrl,
@@ -52,13 +53,13 @@ export function registerBrowserManagerTools(server: McpServer) {
             content: [
               {
                 type: 'text',
-                text: `Browser created successfully!\nBrowser ID: ${browserId}\nType: ${result.data?.type || type || 'chromium'}\nURL: ${targetUrl || 'about:blank'}`
+                text: `Browser created successfully!\nBrowser ID: ${contextId}\nType: ${result.data?.type || type || 'chromium'}\nURL: ${targetUrl || 'about:blank'}`
               }
             ],
             // Include the generated ID in the response for easy access
-            browserId: browserId,
+            contextId: contextId,
             browserInfo: {
-              id: browserId,
+              id: contextId,
               type: result.data?.type || type || 'chromium',
               displayName: displayName,
               targetUrl: targetUrl || 'about:blank'
@@ -77,7 +78,7 @@ export function registerBrowserManagerTools(server: McpServer) {
         }
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : String(error);
-        Logger.error(`Failed to create browser ${browserId}:`, error);
+        Logger.error(`Failed to create browser ${contextId}:`, error);
         return {
           content: [
             {
@@ -102,7 +103,7 @@ export function registerBrowserManagerTools(server: McpServer) {
     },
     async ({ type, tags, includeStats = false }) => {
       try {
-        const browsers = browserManager.listBrowsers({ 
+        const browsers = contextManager.listContexts({ 
           type: type as BrowserType | undefined, 
           tags 
         });
@@ -135,7 +136,7 @@ export function registerBrowserManagerTools(server: McpServer) {
 
         let stats = null;
         if (includeStats) {
-          stats = browserManager.getBrowserStats();
+          stats = contextManager.getContextStats();
         }
 
         const result = {
@@ -173,18 +174,18 @@ export function registerBrowserManagerTools(server: McpServer) {
     'close-browser',
     'Closes a specific browser instance',
     {
-      browserId: z.string().describe('ID of the browser to close')
+      contextId: z.string().describe('ID of the browser to close')
     },
-    async ({ browserId }) => {
+    async ({ contextId }) => {
       try {
-        const result = await browserManager.closeBrowser(browserId);
+        const result = await contextManager.closeContext(contextId);
 
         if (result.success) {
           return {
             content: [
               {
                 type: 'text',
-                text: `Browser closed successfully: ${browserId}`
+                text: `Browser closed successfully: ${contextId}`
               }
             ]
           };
@@ -201,7 +202,7 @@ export function registerBrowserManagerTools(server: McpServer) {
         }
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : String(error);
-        Logger.error(`Failed to close browser ${browserId}:`, error);
+        Logger.error(`Failed to close browser ${contextId}:`, error);
         return {
           content: [
             {
@@ -217,27 +218,30 @@ export function registerBrowserManagerTools(server: McpServer) {
 
   // Get browser info tool
   server.tool(
-    'get-browser-info',
+    'get-context-info',
     'Gets detailed information about a specific browser instance',
     {
-      browserId: z.string().describe('ID of the browser to inspect')
+      contextId: z.string().describe('ID of the browser to inspect')
     },
-    async ({ browserId }) => {
+    async ({ contextId }) => {
       try {
-        const browser = browserManager.getBrowser(browserId);
+        const browser = contextManager.getContext(contextId);
 
         if (!browser) {
           return {
             content: [
               {
                 type: 'text',
-                text: `Browser not found: ${browserId}`
+                text: `Browser not found: ${contextId}`
               }
             ],
             isError: true
           };
         }
 
+        // Get shared browser info for CDP endpoint
+        const sharedBrowserInfo = contextManager.getSharedBrowserInfo();
+        
         const browserInfo = {
           id: browser.id,
           type: browser.type,
@@ -245,8 +249,14 @@ export function registerBrowserManagerTools(server: McpServer) {
           metadata: browser.metadata,
           createdAt: browser.createdAt,
           lastUsedAt: browser.lastUsedAt,
-          isActive: browserManager.hasBrowser(browserId),
-          currentUrl: browser.page ? browser.page.url() : null
+          isActive: contextManager.hasContext(contextId),
+          currentUrl: browser.page.url(),
+          sharedBrowser: sharedBrowserInfo ? {
+            type: sharedBrowserInfo.type,
+            createdAt: sharedBrowserInfo.createdAt,
+            contextCount: sharedBrowserInfo.contextCount,
+            cdpEndpoint: sharedBrowserInfo.cdpEndpoint
+          } : null
         };
 
         return {
@@ -259,7 +269,7 @@ export function registerBrowserManagerTools(server: McpServer) {
         };
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : String(error);
-        Logger.error(`Failed to get browser info for ${browserId}:`, error);
+        Logger.error(`Failed to get browser info for ${contextId}:`, error);
         return {
           content: [
             {
@@ -275,19 +285,28 @@ export function registerBrowserManagerTools(server: McpServer) {
 
   // Get browser statistics tool
   server.tool(
-    'get-browser-stats',
+    'get-context-stats',
     'Gets usage statistics for browsers',
     {
-      browserId: z.string().optional().describe('Specific browser ID (returns stats for all browsers if not specified)')
+      contextId: z.string().optional().describe('Specific browser ID (returns stats for all browsers if not specified)')
     },
-    async ({ browserId }) => {
+    async ({ contextId }) => {
       try {
-        const stats = browserManager.getBrowserStats(browserId);
+        const stats = contextManager.getContextStats(contextId);
 
+        // Include shared browser information
+        const sharedBrowserInfo = contextManager.getSharedBrowserInfo();
+        
         const result = {
-          totalBrowsers: browserManager.getBrowserCount(),
-          maxBrowsers: browserManager.getMaxBrowsers(),
-          statistics: stats
+          totalBrowsers: contextManager.getContextCount(),
+          maxBrowsers: contextManager.getMaxContexts(),
+          statistics: stats,
+          sharedBrowser: sharedBrowserInfo ? {
+            type: sharedBrowserInfo.type,
+            createdAt: sharedBrowserInfo.createdAt,
+            contextCount: sharedBrowserInfo.contextCount,
+            cdpEndpoint: sharedBrowserInfo.cdpEndpoint
+          } : null
         };
 
         return {
@@ -315,5 +334,5 @@ export function registerBrowserManagerTools(server: McpServer) {
   );
 
 
-  return browserManager;
+  return contextManager;
 }
