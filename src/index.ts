@@ -78,15 +78,15 @@ If your development environment does not support HMR, you cannot read HMR events
     });
 
 
-    // Register new browser manager tools
-    const browserManager = registerBrowserManagerTools(server);
+    // Register new context manager tools
+    const contextManager = registerBrowserManagerTools(server);
 
     // Register tools and resources
     registerHMRTools(server, lastHMREvents);
     const screenshotHelpers = registerScreenshotResource(server, browserRef, pageRef);
     registerBrowserTools(
       server,
-      browserManager,
+      contextManager,
       lastHMREvents,
       screenshotHelpers
     );
