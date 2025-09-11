@@ -1,5 +1,16 @@
 # Blowback MCP
 
+## 1.1.0
+
+### Minor Changes
+
+- 20c57d6: Add multiple browser support
+- 3bc9076: refactor browser-manager to context-manager with shared browser architecture
+
+### Patch Changes
+
+- 062ae98: resolve undefined return for function strings (browser-evaluate)
+
 ## 1.0.1
 
 ### Patch Changes
