@@ -1338,19 +1338,22 @@ Examples are available in the schema definition.`,
   server.tool(
     'browser-evaluate',
     `Evaluates JavaScript code directly in the browser context and returns the result.
-Supports both simple expressions and complex functions with argument passing.
+Supports expressions, function strings, and complex code with automatic execution handling.
 Can target the entire page or work with element handles for precise DOM manipulation.
 
 Examples:
 - Simple expression: "document.title"
-- Function with return: "() => document.querySelectorAll('a').length"
-- Function with arguments: "(url) => window.location.href = url"
+- Arrow function: "() => document.querySelectorAll('a').length"
+- Regular function: "function() { return document.body.children.length; }"
+- Function with arguments: "(tag) => document.getElementsByTagName(tag).length"
+- Complex code: "() => { const divs = document.querySelectorAll('div'); return { count: divs.length, hasClass: divs[0]?.className }; }"
 - Async function: "async () => { const res = await fetch('/api'); return res.json(); }"`,
     {
-      function: z.string().describe(`JavaScript function or expression to execute. Examples:
-- Simple expression: "document.title"
-- Function with return: "() => document.querySelectorAll('a').length"
-- Function with argument: "(url) => window.location.href = url"
+      function: z.string().describe(`JavaScript code to execute (expression or function string). Examples:
+- Expression: "document.title"
+- Arrow function: "() => document.querySelectorAll('a').length"
+- Regular function: "function() { return document.body.children.length; }"
+- With arguments: "(tag) => document.getElementsByTagName(tag).length"
 - Async function: "async () => { const res = await fetch('/api'); return res.json(); }"`),
       
       args: z.any().optional().describe(`Optional arguments to pass to the JavaScript function.
@@ -1402,7 +1405,7 @@ Example: { url: "https://example.com", count: 5 }`),
               };
             }
 
-            // Execute with element context
+            // Execute JavaScript on element - Playwright handles both expressions and functions
             result = args !== undefined
               ? await Promise.race([
                 elementHandle.evaluate(jsFunction, args),
@@ -1433,15 +1436,38 @@ Example: { url: "https://example.com", count: 5 }`),
             const readyState = await browserStatus.page.evaluate(() => document.readyState);
             Logger.info(`Evaluating on page: ${currentUrl}, readyState: ${readyState}`);
             
-            result = args !== undefined
-              ? await Promise.race([
+            // Execute JavaScript with fallback for different input types
+            Logger.info(`Executing JavaScript: ${jsFunction.substring(0, 100)}...`);
+            
+            try {
+              // First try: direct evaluation (works for expressions and some functions)
+              result = await Promise.race([
                 browserStatus.page.evaluate(jsFunction, args),
                 new Promise((_, reject) => setTimeout(() => reject(new Error('Execution timeout')), timeout))
-              ])
-              : await Promise.race([
-                browserStatus.page.evaluate(jsFunction),
+              ]);
+              
+              // Check if result is undefined or a function (meaning it wasn't executed)
+              Logger.info(`First try result: ${typeof result}, value: ${result}`);
+              if (result === undefined || typeof result === 'function') {
+                throw new Error('Function not executed, trying alternative method');
+              }
+              
+            } catch (directError) {
+              // Second try: wrap function string with eval wrapper
+              Logger.info('Direct evaluation failed, trying eval wrapper');
+              
+              const wrapper = ({ fn, arg }: { fn: string, arg: any }) => {
+                const func = eval(`(${fn})`);
+                return func(arg);
+              };
+              
+              result = await Promise.race([
+                browserStatus.page.evaluate(wrapper, { fn: jsFunction, arg: args }),
                 new Promise((_, reject) => setTimeout(() => reject(new Error('Execution timeout')), timeout))
               ]);
+            }
+            
+            Logger.info(`Raw result type: ${typeof result}, value: ${JSON.stringify(result)?.substring(0, 200) || 'undefined'}`);
           } catch (evalError) {
             Logger.error(`Page evaluation error: ${evalError}`);
             throw evalError;
@@ -1460,7 +1486,7 @@ Example: { url: "https://example.com", count: 5 }`),
           checkpointId,
           element: element || null,
           returnType,
-          functionCode: jsFunction.length > 200 ? jsFunction.substring(0, 200) + '...' : jsFunction
+          functionCode: jsFunction && jsFunction.length > 200 ? jsFunction.substring(0, 200) + '...' : jsFunction
         };
 
         return {
