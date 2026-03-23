@@ -166,7 +166,7 @@ export class LogManager {
           await this.attachCheckpointStream(checkpointId);
         }
 
-        this.detachCheckpointStreams();
+        await this.detachCheckpointStreams();
       }
 
       if (checkpointId) {
