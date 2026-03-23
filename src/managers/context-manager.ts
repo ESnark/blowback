@@ -1,4 +1,4 @@
-import { chromium, firefox, webkit, Browser, Page } from 'playwright';
+import { chromium, firefox, webkit, Browser } from 'playwright';
 import { Logger } from '../utils/logger.js';
 import { getScreenshotDB } from '../db/screenshot-db.js';
 import { 
@@ -78,24 +78,25 @@ export class ContextManager {
       let cdpPort: number | undefined;
       
       switch (type) {
-        case BrowserType.CHROMIUM:
-          // For Chromium, enable CDP with specific port
-          const debugPort = headless ? undefined : this.findAvailablePort();
-          const launchOptions = { 
-            headless,
-            args: debugPort ? [`--remote-debugging-port=${debugPort}`] : []
-          };
-          browser = await chromium.launch(launchOptions);
-          cdpPort = debugPort;
-          break;
-        case BrowserType.FIREFOX:
-          browser = await firefox.launch({ headless });
-          break;
-        case BrowserType.WEBKIT:
-          browser = await webkit.launch({ headless });
-          break;
-        default:
-          throw new Error(`Unsupported browser type: ${type}`);
+      case BrowserType.CHROMIUM: {
+        // For Chromium, enable CDP with specific port
+        const debugPort = headless ? undefined : this.findAvailablePort();
+        const launchOptions = {
+          headless,
+          args: debugPort ? [`--remote-debugging-port=${debugPort}`] : []
+        };
+        browser = await chromium.launch(launchOptions);
+        cdpPort = debugPort;
+        break;
+      }
+      case BrowserType.FIREFOX:
+        browser = await firefox.launch({ headless });
+        break;
+      case BrowserType.WEBKIT:
+        browser = await webkit.launch({ headless });
+        break;
+      default:
+        throw new Error(`Unsupported browser type: ${type}`);
       }
 
       // Set CDP endpoint if debugging port was specified

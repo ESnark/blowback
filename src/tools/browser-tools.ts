@@ -565,11 +565,13 @@ If ENABLE_BASE64 environment variable is set to 'true', also includes base64 enc
 
         browserStatus.page.on('request', requestHandler);
 
-        // Wait for specified duration
-        await new Promise(resolve => setTimeout(resolve, duration));
-
-        // Stop monitoring
-        browserStatus.page.off('request', requestHandler);
+        try {
+          // Wait for specified duration
+          await new Promise(resolve => setTimeout(resolve, duration));
+        } finally {
+          // Stop monitoring (ensure cleanup even on error)
+          browserStatus.page.off('request', requestHandler);
+        }
 
         return {
           content: [
